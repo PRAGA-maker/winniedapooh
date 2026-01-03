@@ -1,0 +1,17 @@
+Metadata-Version: 2.4
+Name: winniedapooh
+Version: 0.1.0
+Summary: Add your description here
+Requires-Python: >=3.13
+Description-Content-Type: text/markdown
+Requires-Dist: cryptography>=46.0.3
+Requires-Dist: pandas>=2.3.3
+Requires-Dist: pyarrow>=22.0.0
+Requires-Dist: pydantic>=2.12.5
+Requires-Dist: python-dotenv>=1.2.1
+Requires-Dist: pyyaml>=6.0.3
+Requires-Dist: requests>=2.32.5
+Requires-Dist: scikit-learn>=1.8.0
+
+# winniedapooh
+exploring all 100 acres

@@ -1,0 +1,3 @@
+[console_scripts]
+build_db = src.build_unified_parquet:build_db_cli
+run_bench = runner.runner:run_experiment
