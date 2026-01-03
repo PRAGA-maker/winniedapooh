@@ -17,7 +17,7 @@ Prerequisites: Python 3.13+, `uv` (package manager).
 | 1 | `uv sync` | Install dependencies. |
 | 2 | `cp .env.example .env` | Configure API keys (Kalshi/Metaculus). |
 | 3 | `uv run scripts/build_db.py` | Fetch data and build the unified Parquet dataset. |
-| 4 | `uv run runner/runner.py` | Run the baseline benchmarking experiment. |
+| 4 | `uv run runner/runner.py --method mlp_nn` | Run a benchmarking experiment. |
 | 5 | `uv run scripts/inspect_parquet.py` | View summary statistics of the latest dataset. |
 
 --------------------------------------------------------------------------------
@@ -72,51 +72,63 @@ B. Task Definitions (`dataobject/tasks/`)
 - `Batch`: A collection of `Example` objects.
 
 C. Forecasting Methods (`methods/`)
-- `ForecastMethod`: Base class for all models/baselines.
+- `ForecastMethod`: Base class for all models/baselines. Supports `.fit()`, `.predict()`, `.save()`, `.load()`.
 - `LastPriceBaseline`: Simple baseline that predicts the most recent belief.
+- `MLPForecaster`: A simple Neural Network (MLP) trained on price history.
 - `registry.py`: Central factory for instantiating methods.
 
 D. Experiment Workflow (`runner/`)
 - `RunSpec`: Serializable configuration for an experiment run.
-- `runner.py`: Orchestrates loading data, splitting, and evaluation.
+- `runner.py`: The primary CLI for orchestrating data loading, training, and evaluation.
 - `evaluator.py`: Computes metrics (Brier, LogLoss, etc.) per task.
-- `result_store.py`: Saves metrics and specs to `data/runs/`.
 
 --------------------------------------------------------------------------------
-4. HOW TO BUILD OFF THIS REPO
+4. HOW TO BUILD OFF THIS REPO (Best Practices)
 --------------------------------------------------------------------------------
 
 A. Adding a New Forecasting Method
-1. Create a new file in `methods/` (e.g., `methods/my_model.py`).
-2. Subclass `ForecastMethod` and implement `.predict(batch, spec)`.
-3. Register your class in `methods/registry.py`.
+1. **Create**: New file in `methods/` (e.g., `methods/my_model.py`).
+2. **Subclass**: Inherit from `ForecastMethod`.
+3. **Implement**:
+   - `.fit(train_batches, spec)`: Logic to train your model.
+   - `.predict(batch, spec)`: Return a list of predictions (0-1).
+   - `.save(path)` / `.load(path)`: (Optional) Handle persistence.
+4. **Register**: Add your class to `METHODS` in `methods/registry.py`.
 
 B. Adding a New Task
-1. Create a new file in `dataobject/tasks/` (e.g., `dataobject/tasks/my_task.py`).
-2. Subclass `Task` from `dataobject.tasks.base`.
-3. Implement `.make_examples(record, rng)` to define how features are extracted.
-4. Implement `.metric_fns()` to return a dict of `{name: function}` for evaluation.
-5. Register it in `runner/runner.py` by adding it to the `TASK_REGISTRY` dict.
+1. **Create**: New file in `dataobject/tasks/` (e.g., `dataobject/tasks/my_task.py`).
+2. **Subclass**: Inherit from `Task`.
+3. **Implement**:
+   - `.make_examples(record, rng)`: Define how to turn a `MarketRecord` into `Example` objects.
+   - `.metric_fns()`: Return a dict of `{name: sklearn_metric_fn}`.
+4. **Register**: Add it to `TASK_REGISTRY` in `runner/runner.py`.
 
-C. Modifying Parameters
-- Experiment params are defined in `RunSpec` within `runner/runner.py`.
-- Data ingestion limits can be passed to `scripts/build_db.py --limit N`.
+C. Experiment Artifacts
+All outputs are stored in `data/outputs/` (ignored by git), organized by model configuration and run:
+`data/outputs/<model>_<hash>/run_<timestamp>_<name>/`
+
+Sub-directories within each run:
+- `model/`: Serialized model weights (`.joblib`, `.pt`).
+- `logs/`: Execution logs and `run.log`.
+- `plots/`: Visualizations and performance graphs.
+- `metrics/`: Structured JSON metrics (`metrics.json`) and run spec (`spec.json`).
+- `*.txt`: A run-info file with description and metadata.
 
 --------------------------------------------------------------------------------
 5. REPOSITORY STRUCTURE
 --------------------------------------------------------------------------------
 
 /
-├── data/               # Local data storage (raw, clean parquets, runs)
+├── data/               # Local data storage (raw, clean parquets, outputs)
+│   └── outputs/        # Organized experiment artifacts (models, logs, plots, metrics)
 ├── dataobject/         # Data models, tasks, and IO hygiene
 ├── docs/               # Platform-specific documentation/metadata
 ├── methods/            # Implementations of forecasting algorithms
 ├── runner/             # Experiment orchestration and evaluation
-├── scripts/            # CLI tools and smoke tests
+├── scripts/            # Data ingestion and inspection tools
 ├── src/                # Core logic (normalization, API grabbers)
 │   ├── common/         # Shared utils (schema, config, http)
 │   ├── kalshi/         # Kalshi-specific mapping
 │   └── metaculus/      # Metaculus-specific mapping
 ├── pyproject.toml      # Project dependencies and metadata
 └── README.md           # High-level overview
-

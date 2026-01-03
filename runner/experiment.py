@@ -14,6 +14,7 @@ class RunSpec:
     train_view: Dict[str, Any]
     test_view: Dict[str, Any]
     bench_view: Dict[str, Any]
+    description: str = ""
 
     def to_dict(self):
         return asdict(self)

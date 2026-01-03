@@ -6,5 +6,6 @@ data/raw/
 data/clean/
 data/datasets/
 data/runs/
+data/models/
+data/outputs/
 .cursor/
-
