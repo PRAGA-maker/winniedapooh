@@ -1,0 +1,122 @@
+================================================================================
+                    WINNIE DA POOH - DOCUMENTATION
+================================================================================
+
+Winnie Da Pooh is a reproducible forecasting data pipeline and benchmarking 
+framework. It normalizes data from prediction markets (Kalshi) and forecasting 
+platforms (Metaculus) into a unified format for testing forecasting models.
+
+--------------------------------------------------------------------------------
+1. QUICK START / USAGE
+--------------------------------------------------------------------------------
+
+Prerequisites: Python 3.13+, `uv` (package manager).
+
+| Step | Command | Description |
+|------|---------|-------------|
+| 1 | `uv sync` | Install dependencies. |
+| 2 | `cp .env.example .env` | Configure API keys (Kalshi/Metaculus). |
+| 3 | `uv run scripts/build_db.py` | Fetch data and build the unified Parquet dataset. |
+| 4 | `uv run runner/runner.py` | Run the baseline benchmarking experiment. |
+| 5 | `uv run scripts/inspect_parquet.py` | View summary statistics of the latest dataset. |
+
+--------------------------------------------------------------------------------
+2. DATA SCHEMA
+--------------------------------------------------------------------------------
+
+The pipeline normalizes data into two primary structures, stored in a unified 
+Parquet format.
+
+A. MarketRecord (The "Static" Info)
+Defined in `src/common/schema.py`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| source | str | "kalshi" or "metaculus" |
+| market_id | str | Unique ID within the source. |
+| title | str | Question/Market name. |
+| description | str | Full context of the question. |
+| url | str | Link to the original platform. |
+| market_type | Enum | binary, multiple_choice, numeric, or other. |
+| answer_options_json| str (JSON) | List of possible answers/choices. |
+| end_time | datetime | When the market closes. |
+| status | Enum | open, closed, resolved, or unknown. |
+| resolved_value_json| str (JSON) | The outcome (e.g., "1.0", "yes", or list). |
+| metadata_json | str (JSON) | Source-specific raw metadata. |
+
+B. TimeSeriesPoint (The "Belief" History)
+Stored in the same Parquet table as nested/exploded rows for history.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| ts | datetime | Timestamp of the prediction/trade. |
+| belief_scalar | float | The normalized probability or price (0-1). |
+| belief_json | str (JSON) | Non-scalar beliefs (e.g., distributions). |
+| volume | float | Trading volume (Kalshi-specific). |
+| open_interest | float | Active contracts (Kalshi-specific). |
+| bid / ask | float | Best buy/sell prices (Kalshi-specific). |
+
+--------------------------------------------------------------------------------
+3. CORE CLASSES & MODULES
+--------------------------------------------------------------------------------
+
+A. Data Handling (`dataobject/`)
+- `MarketDataset`: Entry point for loading `.parquet` data.
+- `MarketRecordWrapper`: Helper to access row data with validation.
+- `SplitManager`: Handles reproducible Train/Test/Bench splits via hashing.
+
+B. Task Definitions (`dataobject/tasks/`)
+- `Task`: Abstract base class for defining prediction problems.
+- `ResolveBinary`: Standard binary classification task (predict the final result).
+- `Example`: A single data point (features + history + target).
+- `Batch`: A collection of `Example` objects.
+
+C. Forecasting Methods (`methods/`)
+- `ForecastMethod`: Base class for all models/baselines.
+- `LastPriceBaseline`: Simple baseline that predicts the most recent belief.
+- `registry.py`: Central factory for instantiating methods.
+
+D. Experiment Workflow (`runner/`)
+- `RunSpec`: Serializable configuration for an experiment run.
+- `runner.py`: Orchestrates loading data, splitting, and evaluation.
+- `evaluator.py`: Computes metrics (Brier, LogLoss, etc.) per task.
+- `result_store.py`: Saves metrics and specs to `data/runs/`.
+
+--------------------------------------------------------------------------------
+4. HOW TO BUILD OFF THIS REPO
+--------------------------------------------------------------------------------
+
+A. Adding a New Forecasting Method
+1. Create a new file in `methods/` (e.g., `methods/my_model.py`).
+2. Subclass `ForecastMethod` and implement `.predict(batch, spec)`.
+3. Register your class in `methods/registry.py`.
+
+B. Adding a New Task
+1. Create a new file in `dataobject/tasks/` (e.g., `dataobject/tasks/my_task.py`).
+2. Subclass `Task` from `dataobject.tasks.base`.
+3. Implement `.make_examples(record, rng)` to define how features are extracted.
+4. Implement `.metric_fns()` to return a dict of `{name: function}` for evaluation.
+5. Register it in `runner/runner.py` by adding it to the `TASK_REGISTRY` dict.
+
+C. Modifying Parameters
+- Experiment params are defined in `RunSpec` within `runner/runner.py`.
+- Data ingestion limits can be passed to `scripts/build_db.py --limit N`.
+
+--------------------------------------------------------------------------------
+5. REPOSITORY STRUCTURE
+--------------------------------------------------------------------------------
+
+/
+├── data/               # Local data storage (raw, clean parquets, runs)
+├── dataobject/         # Data models, tasks, and IO hygiene
+├── docs/               # Platform-specific documentation/metadata
+├── methods/            # Implementations of forecasting algorithms
+├── runner/             # Experiment orchestration and evaluation
+├── scripts/            # CLI tools and smoke tests
+├── src/                # Core logic (normalization, API grabbers)
+│   ├── common/         # Shared utils (schema, config, http)
+│   ├── kalshi/         # Kalshi-specific mapping
+│   └── metaculus/      # Metaculus-specific mapping
+├── pyproject.toml      # Project dependencies and metadata
+└── README.md           # High-level overview
+
