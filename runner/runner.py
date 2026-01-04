@@ -6,8 +6,9 @@ import hashlib
 from pathlib import Path
 from typing import Dict, Any, List
 
-# Add project root to sys.path
-sys.path.append(str(Path(__file__).parent.parent))
+# Add project root to sys.path at the beginning to avoid package shadowing
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from dataobject.dataset import MarketDataset
 from dataobject.splits import SplitManager

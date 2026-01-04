@@ -9,7 +9,7 @@ class LastPriceBaseline(ForecastMethod):
     def predict(self, batch: Batch, spec: Dict[str, Any]) -> np.ndarray:
         preds = []
         for ex in batch.examples:
-            if ex.history_belief:
+            if len(ex.history_belief) > 0:
                 preds.append(ex.history_belief[-1])
             else:
                 preds.append(0.5) # Fallback

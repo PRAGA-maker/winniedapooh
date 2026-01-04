@@ -19,9 +19,9 @@ def write_parquet_dataset(df: pd.DataFrame, dataset_name: str, version: str = No
     logger.info(f"Writing parquet dataset to {file_path}...")
     
     # Ensure all datetime columns are UTC
-    for col in df.select_dtypes(include=['datetime64']).columns:
+    for col in df.select_dtypes(include=['datetime64', 'datetime64[ns]']).columns:
         if df[col].dt.tz is None:
-            df[col] = df[col].dt.set_tz('UTC')
+            df[col] = df[col].dt.tz_localize('UTC')
             
     df.to_parquet(file_path, index=False)
     
