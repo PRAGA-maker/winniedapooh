@@ -153,12 +153,13 @@ class HttpClient:
 def get_kalshi_client():
     if not config.kalshi_api_key_id or not config.kalshi_private_key:
         logger.warning("Kalshi API credentials not found in environment.")
-        # Safe default: 10 req/s, max 10 concurrent
-        return HttpClient(config.kalshi_base_url, delay=0.1, max_concurrency=10)
+        # Safe default: 10 req/s
+        return HttpClient(config.kalshi_base_url, delay=0.1, max_concurrency=5)
     
     auth = KalshiAuth(config.kalshi_api_key_id, config.kalshi_private_key)
-    # 20 req/s limit -> 0.05s delay. Use 0.06s for safety (16.6 req/s), max 17 concurrent
-    return HttpClient(config.kalshi_base_url, auth=auth, delay=0.06, max_concurrency=17)
+    # OPTIMIZATION: 20 req/s limit. We use 18 max concurrency and a 0.06s delay
+    # to stay just under the ceiling (16.6 req/s) while avoiding burst-driven 429s.
+    return HttpClient(config.kalshi_base_url, auth=auth, delay=0.06, max_concurrency=18)
 
 def get_metaculus_client():
     headers = {}
@@ -177,4 +178,8 @@ def get_metaculus_client():
 # 3. Message format: timestamp + method + path (no body for GET).
 # 4. Metaculus Rate Limit: They are strict. 1000 req/hr = ~3.6s delay. 
 #    Always use a delay in HttpClient for Metaculus to avoid 429s.
+# 5. Rate Limit Jitter: Adding random jitter to retries helps avoid synchronized 
+#    "thundering herd" spikes when multiple parallel workers hit a rate limit.
+# 6. Session Reuse: Reusing a single requests.Session across multiple calls 
+#    is significantly faster due to TCP connection pooling.
 

@@ -11,6 +11,7 @@ if __name__ == "__main__":
     from datetime import date
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=None, help="Limit number of markets (Test Mode)")
+    parser.add_argument("--metaculus-limit", type=int, default=None, help="Specific limit for Metaculus (overrides --limit)")
     parser.add_argument("--no-cache", action="store_false", dest="use_cache", default=True)
     parser.add_argument("--kalshi-ticker", type=str, default=None)
     parser.add_argument("--start", type=str, default=None, help="Kalshi bulk start date (YYYY-MM-DD)")
@@ -22,6 +23,7 @@ if __name__ == "__main__":
     
     build_unified_dataset(
         limit=args.limit, 
+        metaculus_limit=args.metaculus_limit,
         use_cache=args.use_cache, 
         kalshi_ticker=args.kalshi_ticker,
         start_date=start_date,

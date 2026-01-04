@@ -9,16 +9,16 @@ class MetaculusGrabber:
     def __init__(self):
         self.client = get_metaculus_client()
 
-    def fetch_posts(self, limit: int = 1000, status: str = None, use_cache: bool = True) -> List[Dict[str, Any]]:
+    def fetch_posts(self, limit: int = 1000, offset: int = 0, status: str = None, use_cache: bool = True) -> List[Dict[str, Any]]:
         """Fetch list of posts (which contain questions)."""
-        logger.info(f"Fetching Metaculus posts (limit={limit}, status={status})...")
+        logger.info(f"Fetching Metaculus posts (limit={limit}, offset={offset}, status={status})...")
         posts = []
-        offset = 0
+        current_offset = offset
         
         while len(posts) < limit:
             params = {
                 "limit": min(100, limit - len(posts)),
-                "offset": offset,
+                "offset": current_offset,
                 "include_cp_history": "true",
                 "include_descriptions": "true",
             }
@@ -34,7 +34,7 @@ class MetaculusGrabber:
             
             if not data.get("next") or not batch:
                 break
-            offset += len(batch)
+            current_offset += len(batch)
                 
         return posts[:limit]
 

@@ -34,12 +34,16 @@ def inspect_latest_parquet():
     # More granular belief value stats (min/max/mean)
     print("\nBelief value stats per source (expanded):")
     def get_list_stats(lst):
-        vals = [v for v in lst if v is not None]
+        if lst is None or len(lst) == 0:
+            return pd.Series({'min': None, 'max': None, 'mean': None, 'count': 0})
+        
+        # Filter out None values from the list
+        vals = [v for v in lst if v is not None and not (isinstance(v, float) and pd.isna(v))]
         if not vals:
             return pd.Series({'min': None, 'max': None, 'mean': None, 'count': 0})
         return pd.Series({'min': min(vals), 'max': max(vals), 'mean': sum(vals)/len(vals), 'count': len(vals)})
 
-    source_stats = df.groupby('source')['belief'].apply(lambda x: x.apply(get_list_stats).mean())
+    source_stats = df.groupby('source')['belief'].apply(lambda x: x.apply(get_list_stats).mean(numeric_only=True))
     print(source_stats)
 
     # Ratio of non-empty to total

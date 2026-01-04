@@ -32,6 +32,9 @@ class KalshiGrabber:
             batch = data.get("markets", [])
             markets.extend(batch)
             
+            if len(markets) % 1000 == 0:
+                logger.info(f"  Downloaded {len(markets)} markets metadata...")
+            
             cursor = data.get("cursor")
             if not cursor or not batch:
                 break
