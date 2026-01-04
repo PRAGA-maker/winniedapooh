@@ -11,16 +11,29 @@ class MetaculusGrabber:
         self.raw_dir = config.raw_data_dir / "metaculus"
         self.raw_dir.mkdir(parents=True, exist_ok=True)
 
-    def fetch_posts(self, limit: int = 100, status: str = None) -> List[Dict[str, Any]]:
+    def fetch_posts(self, limit: int = 1000, status: str = None, use_cache: bool = True) -> List[Dict[str, Any]]:
         """Fetch list of posts (which contain questions)."""
         logger.info(f"Fetching Metaculus posts (limit={limit}, status={status})...")
         posts = []
         offset = 0
         
         while len(posts) < limit:
+            filename = f"posts_offset_{offset}.json"
+            cache_path = self.raw_dir / filename
+            
+            if use_cache and cache_path.exists():
+                logger.debug(f"Loading Metaculus posts from cache: {filename}")
+                with open(cache_path, "r") as f:
+                    batch = json.load(f)
+                posts.extend(batch)
+                offset += len(batch)
+                continue
+
             params = {
                 "limit": min(100, limit - len(posts)),
                 "offset": offset,
+                "include_cp_history": "true",
+                "include_descriptions": "true",
             }
             if status:
                 params["status"] = status
@@ -33,8 +46,7 @@ class MetaculusGrabber:
             posts.extend(batch)
             
             # Save raw batch
-            filename = f"posts_offset_{offset}.json"
-            with open(self.raw_dir / filename, "w") as f:
+            with open(cache_path, "w") as f:
                 json.dump(batch, f)
             
             if not data.get("next") or not batch:
@@ -43,34 +55,37 @@ class MetaculusGrabber:
                 
         return posts[:limit]
 
-    def fetch_post_detail(self, post_id: int) -> Dict[str, Any]:
+    def fetch_post_detail(self, post_id: int, use_cache: bool = True) -> Dict[str, Any]:
         """Fetch detailed info for a single post with history."""
+        cache_path = self.raw_dir / f"post_{post_id}.json"
+        if use_cache and cache_path.exists():
+            with open(cache_path, "r") as f:
+                return json.load(f)
+
         logger.info(f"Fetching Metaculus post details for {post_id}...")
         params = {"include_cp_history": "true"}
         response = self.client.get(f"/api/posts/{post_id}/", params=params)
         data = response.json()
         
         # Save raw detail
-        with open(self.raw_dir / f"post_{post_id}.json", "w") as f:
+        with open(cache_path, "w") as f:
             json.dump(data, f)
             
         return data
 
-# --- LESSONS LEARNED ---
-# 1. API Selection: /api/posts/ is significantly better than /api2/questions/.
-# 2. Detail matters: List endpoints don't always return full history even with flags.
-#    Always fetch the post detail to get the full 'recency_weighted' history.
-# 3. Hierarchy: A 'post' contains 'questions'. Sometimes it's a single question,
-#    sometimes a group, sometimes a conditional pair. Check all keys!
-
-    def fetch_prediction_history(self, q_id: int) -> List[Dict[str, Any]]:
+    def fetch_prediction_history(self, q_id: int, use_cache: bool = True) -> List[Dict[str, Any]]:
         """Fetch prediction history for a single question."""
+        cache_path = self.raw_dir / f"history_{q_id}.json"
+        if use_cache and cache_path.exists():
+            with open(cache_path, "r") as f:
+                return json.load(f)
+
         logger.info(f"Fetching Metaculus prediction history for {q_id}...")
         response = self.client.get(f"/api2/questions/{q_id}/prediction-history/")
         data = response.json()
         
         # Save raw history
-        with open(self.raw_dir / f"history_{q_id}.json", "w") as f:
+        with open(cache_path, "w") as f:
             json.dump(data, f)
             
         return data

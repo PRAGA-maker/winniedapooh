@@ -106,10 +106,10 @@ class HttpClient:
 def get_kalshi_client():
     if not config.kalshi_api_key_id or not config.kalshi_private_key:
         logger.warning("Kalshi API credentials not found in environment.")
-        return HttpClient(config.kalshi_base_url)
+        return HttpClient(config.kalshi_base_url, delay=0.1)
     
     auth = KalshiAuth(config.kalshi_api_key_id, config.kalshi_private_key)
-    return HttpClient(config.kalshi_base_url, auth=auth)
+    return HttpClient(config.kalshi_base_url, auth=auth, delay=0.1)
 
 def get_metaculus_client():
     headers = {}
