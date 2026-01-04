@@ -16,7 +16,7 @@ Prerequisites: Python 3.13+, `uv` (package manager).
 |------|---------|-------------|
 | 1 | `uv sync` | Install dependencies. |
 | 2 | `cp .env.example .env` | Configure API keys (Kalshi/Metaculus). |
-| 3 | `uv run scripts/build_db.py` | Fetch data and build the unified Parquet dataset. |
+| 3 | `uv run scripts/build_db.py --start 2023-01-01 --end 2025-12-31` | Fetch data (S3-first discovery) and build dataset. |
 | 4 | `uv run runner/runner.py --method mlp_nn` | Run a benchmarking experiment. |
 | 5 | `uv run scripts/inspect_parquet.py` | View summary statistics of the latest dataset. |
 
@@ -29,6 +29,8 @@ Parquet format.
 
 A. MarketRecord (The "Static" Info)
 Defined in `src/common/schema.py`.
+
+*Optimization Note*: Kalshi metadata is enriched in batches of 100 via the `/markets?tickers=...` endpoint after discovering unique tickers from S3 bulk files. This provides a ~100x speedup over one-by-one enrichment.
 
 | Field | Type | Description |
 |-------|------|-------------|

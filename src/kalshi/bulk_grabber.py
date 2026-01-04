@@ -81,6 +81,50 @@ class KalshiBulkGrabber:
                     logger.error(f"Failed to finish {target_date} after {retries} attempts.")
                     raise
 
+    def scan_all_tickers(self, start_date: date, end_date: date, workers: int = 14) -> List[str]:
+        """Scan S3 bulk files in parallel to find all unique tickers in a date range."""
+        import re
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        
+        logger.info(f"Scanning S3 bulk files for tickers between {start_date} and {end_date}...")
+        
+        dates = []
+        curr = start_date
+        while curr <= end_date:
+            dates.append(curr)
+            curr += timedelta(days=1)
+            
+        unique_tickers = set()
+        ticker_regex = re.compile(r'"ticker_name":\s*"([^"]+)"')
+        
+        def process_date(d):
+            url = self._get_url_for_date(d)
+            tickers = set()
+            try:
+                # Use a larger chunk size for scanning
+                with requests.get(url, stream=True, timeout=30) as r:
+                    if r.status_code == 200:
+                        for chunk in r.iter_content(chunk_size=1024*1024):
+                            text = chunk.decode('utf-8', errors='ignore')
+                            tickers.update(ticker_regex.findall(text))
+                return tickers
+            except Exception as e:
+                logger.error(f"Error scanning tickers for {d}: {e}")
+                return set()
+
+        processed_count = 0
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(process_date, d): d for d in dates}
+            for future in as_completed(futures):
+                res = future.result()
+                unique_tickers.update(res)
+                processed_count += 1
+                if processed_count % 10 == 0 or processed_count == len(dates):
+                    logger.info(f"  Scanned {processed_count}/{len(dates)} files... ({len(unique_tickers)} tickers found)")
+                
+        logger.info(f"Scan complete. Found {len(unique_tickers)} unique tickers.")
+        return sorted(list(unique_tickers))
+
     def map_to_timeseries(self, raw_record: Dict[str, Any]) -> TimeSeriesPoint:
         """Map a raw bulk record to a canonical TimeSeriesPoint."""
         # The date in the bulk record is YYYY-MM-DD

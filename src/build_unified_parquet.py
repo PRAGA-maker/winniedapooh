@@ -83,9 +83,11 @@ class CanonicalStore:
 
     def _init_db(self):
         with self._get_conn() as conn:
-            # Enable WAL mode for better concurrency and performance
+            # High-performance pragmas for massive bulk ingestion
             conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA synchronous=OFF") # Set to OFF for speed during initial build
+            conn.execute("PRAGMA cache_size=-2000000") # 2GB cache
+            conn.execute("PRAGMA temp_store=MEMORY")
             
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS markets (
@@ -139,6 +141,12 @@ class CanonicalStore:
         with self._get_conn() as conn:
             rows = conn.execute("SELECT market_id, status FROM markets WHERE source = ?", (source,)).fetchall()
             return {r[0]: r[1] for r in rows}
+
+    def get_existing_market_ids(self, source: str) -> List[str]:
+        """Return a list of all market_ids for a given source."""
+        with self._get_conn() as conn:
+            rows = conn.execute("SELECT market_id FROM markets WHERE source = ?", (source,)).fetchall()
+            return [r[0] for r in rows]
 
     def save(self, source: str, market_id: str, market_record: Dict[str, Any], timeseries: List[Dict[str, Any]]):
         self.save_batch(source, {market_id: market_record}, {market_id: timeseries})
@@ -305,128 +313,70 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
     api_calls_count = 0
     batch_size = 17 # Kalshi rate limit is 20, we use 17 to stay safe
     
-    # Use number of cores minus 4, as requested by the user for quality code
-    num_workers = max(1, (os.cpu_count() or 8) - 4)
-    logger.info(f"Using {num_workers} parallel workers for bulk processing.")
+    # Use number of cores minus 2, as requested by the user
+    num_workers = max(1, (os.cpu_count() or 16) - 2)
+    logger.info(f"Using {num_workers} parallel workers for processing.")
 
-    # 1. Fetch Kalshi Metadata from API
+    # 1. Kalshi Pipeline (Optimized)
     kalshi_grabber = KalshiGrabber()
+    kalshi_bulk = KalshiBulkGrabber()
     existing_statuses = store.get_existing_market_statuses("kalshi")
     
     if kalshi_ticker:
-        # Single ticker mode
+        # Single ticker mode (mostly for debugging)
         k_markets = kalshi_grabber.fetch_markets(limit=1, ticker=kalshi_ticker, use_cache=use_cache)
-        metadata_batch = {}
-        for m in k_markets:
-            try:
-                record = map_kalshi_market(m)
-                metadata_batch[m["ticker"]] = record.model_dump(mode='json')
-            except Exception: continue
+        metadata_batch = {m["ticker"]: map_kalshi_market(m).model_dump(mode='json') for m in k_markets}
         store.save_batch("kalshi", metadata_batch, {})
-    else:
-        try:
-            # OPTIMIZATION: Check if we need a full catalog sync or just incremental
-            # We fetch settled markets to ensure historical completeness.
-            fetch_limit = limit if limit is not None else 10000000 
-            logger.info(f"Syncing Kalshi metadata (limit={fetch_limit})...")
+    elif start_date and end_date:
+        # STEP A: Discovery from S3
+        discovered_tickers = kalshi_bulk.scan_all_tickers(start_date, end_date, workers=num_workers)
+        
+        # STEP B: Filter missing metadata
+        missing_tickers = [t for t in discovered_tickers if t not in existing_statuses or not existing_statuses[t]]
+        if limit: missing_tickers = missing_tickers[:limit]
+        
+        # STEP C: Batch Enrich Metadata from API
+        if missing_tickers:
+            logger.info(f"Enriching metadata for {len(missing_tickers)} missing tickers in batches...")
+            new_markets = kalshi_grabber.fetch_markets(tickers=missing_tickers)
+            metadata_batch = {}
+            for m in new_markets:
+                try:
+                    record = map_kalshi_market(m)
+                    metadata_batch[m["ticker"]] = record.model_dump(mode='json')
+                except Exception: continue
             
-            cursor = ""
-            total_fetched = 0
-            while total_fetched < fetch_limit:
-                params = {"limit": 100, "status": "settled"}
-                if cursor: params["cursor"] = cursor
-                
-                response = kalshi_grabber.client.get("/markets", params=params)
-                data = response.json()
-                batch = data.get("markets", [])
-                
-                if not batch: break
-                
-                metadata_batch = {}
-                num_skipped = 0
-                for m in batch:
-                    ticker = m["ticker"]
-                    # If it's already in DB and settled, skip mapping/saving overhead
-                    if use_cache and existing_statuses.get(ticker) == "settled":
-                        num_skipped += 1
-                        continue
-                    try:
-                        record = map_kalshi_market(m)
-                        metadata_batch[ticker] = record.model_dump(mode='json')
-                    except Exception: continue
-                
-                if metadata_batch:
-                    store.save_batch("kalshi", metadata_batch, {})
-                
-                total_fetched += len(batch)
-                cursor = data.get("cursor")
-                if total_fetched % 1000 == 0:
-                    logger.info(f"  Scanned {total_fetched} markets... ({num_skipped} skipped, {len(metadata_batch)} updated)")
-                
-                # OPTIMIZATION: If we hit a large streak of already-settled markets,
-                # and we are in incremental mode, we could stop.
-                # For now, we continue to ensure NO dark pools.
-                if not cursor: break
-                
-        except Exception as e:
-            logger.error(f"Failed to sync Kalshi markets: {e}")
-
-    logger.info(f"Kalshi metadata sync complete.")
-
-    # 2. Fetch Kalshi History from Bulk JSONs (OOM-Safe)
-    # We now fetch ticker metadata from SQLite to avoid keeping 10M dicts in memory
-    # But for performance in the parallel workers, we'll pre-fetch the mapping
-    # of ticker -> metadata only for the tickers we have.
-    # To avoid OOM, if there are millions, we should be careful.
-    # Let's see how many we actually have.
-    existing_tickers = store.get_existing_market_ids("kalshi")
-    logger.info(f"Loaded {len(existing_tickers)} existing tickers from DB for lookup.")
-    
-    # We'll build a lightweight lookup for the title/description fallback if needed
-    # but the bulk processing actually doesn't strictly need the full metadata 
-    # if it's already in the DB.
-    # Let's pass a small subset if needed, or just let the workers fetch from DB?
-    # Actually, the current worker logic uses `market_metadata.get(ticker)`.
-    # Let's optimize this to only provide metadata for markets we actually find in bulk.
-    
-    # For now, let's keep a minimal dict of {ticker: title} if possible, or just 
-    # refactor the worker to handle missing metadata gracefully.
-    
-    # Refactor: We don't pass 'market_metadata' giant dict to workers anymore.
-    # Instead, we'll let the DB handle it via 'add_history_points_batch'.
-    if start_date and end_date:
+            if metadata_batch:
+                store.save_batch("kalshi", metadata_batch, {})
+                logger.info(f"Saved metadata for {len(metadata_batch)} new Kalshi markets.")
+        
+        # STEP D: History Ingestion (Continue as before but with more workers)
         current_date = start_date
         dates_to_process = []
         while current_date <= end_date:
             if use_cache and store.is_date_processed("kalshi", current_date):
-                logger.debug(f"Skipping Kalshi date {current_date} (already fully enriched)")
+                pass # Already done
             else:
                 dates_to_process.append(current_date)
             current_date += timedelta(days=1)
         
         if dates_to_process:
-            logger.info(f"Processing {len(dates_to_process)} missing days of Kalshi bulk data in parallel...")
-            
+            logger.info(f"Processing {len(dates_to_process)} days of Kalshi history in parallel...")
+            processed_days = 0
             with ProcessPoolExecutor(max_workers=num_workers) as executor:
                 futures = {executor.submit(process_kalshi_day, d, limit): d for d in dates_to_process}
-                
                 for future in as_completed(futures):
                     target_date, day_points, records_count = future.result()
-                    
                     if day_points:
-                        # Batch save the whole day's worth of records
-                        logger.info(f"  Saving {len(day_points)} records for {target_date}...")
                         store.add_history_points_batch("kalshi", day_points)
-                    
-                    logger.info(f"Finished Day {target_date}: {records_count} records processed.")
-                    # IMPORTANT: Mark as done only AFTER successful batch save
                     store.mark_date_processed("kalshi", target_date)
-        else:
-            logger.info("All Kalshi dates in requested range are already enriched.")
+                    processed_days += 1
+                    logger.info(f"  [{processed_days}/{len(dates_to_process)}] Finished Kalshi Day {target_date}: {records_count} records.")
     else:
-        logger.warning("No bulk dates provided, skipping Kalshi history collection.")
-            
-    # 3. Fetch Metaculus Data
+        # Fallback to old behavior if no dates provided (unlikely given user query)
+        logger.warning("No dates provided, skipping Kalshi history collection.")
+
+    # 2. Fetch Metaculus Data (Sequential due to rate limits)
     # Use the specific limit for Metaculus if provided, else use the general limit
     # If both are None, we use a large default (100,000) for Metaculus
     actual_metaculus_limit = metaculus_limit if metaculus_limit is not None else (limit if limit is not None else 100000)
