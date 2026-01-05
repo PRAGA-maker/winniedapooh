@@ -73,80 +73,165 @@ class KalshiBulkGrabber:
                     
                     return
 
-            except (requests.exceptions.RequestException, ConnectionError) as e:
+            except (requests.exceptions.RequestException, ConnectionError, requests.exceptions.Timeout) as e:
                 logger.warning(f"Connection dropped for {target_date}: {e}")
                 if attempt < retries - 1:
-                    time.sleep(2 ** attempt)
+                    sleep_time = 2 ** attempt
+                    logger.warning(f"  Retrying in {sleep_time}s...")
+                    time.sleep(sleep_time)
                 else:
                     logger.error(f"Failed to finish {target_date} after {retries} attempts.")
                     raise
 
-    def scan_all_tickers(self, start_date: date, end_date: date, workers: int = 14) -> Dict[str, Dict[str, Any]]:
+    def scan_all_tickers(self, start_date: date, end_date: date, workers: int = 14, skip_dates: Optional[List[date]] = None) -> Dict[str, Dict[str, Any]]:
         """
         Scan S3 bulk files in parallel to find unique tickers and their activity levels.
-        Aggressively identifies which markets are actually 'alive' (have volume/interest).
+        Uses a temporary SQLite database to avoid memory bloat when tracking millions of tickers.
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
+        import sqlite3
+        import tempfile
         
         logger.info(f"Aggressively scanning S3 bulk files for activity between {start_date} and {end_date}...")
         
         dates = []
         curr = start_date
         while curr <= end_date:
-            dates.append(curr)
+            if skip_dates is None or curr not in skip_dates:
+                dates.append(curr)
             curr += timedelta(days=1)
             
-        def process_date(d):
+        if not dates:
+            return {}
+            
+        # Create a temporary SQLite database to track vitals
+        temp_db_path = Path(tempfile.gettempdir()) / f"kalshi_vitals_{int(time.time())}.db"
+        conn = sqlite3.connect(temp_db_path)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=OFF")
+        conn.execute("PRAGMA cache_size=-1000000") # 1GB cache
+        
+        conn.execute("""
+            CREATE TABLE vitals (
+                ticker TEXT PRIMARY KEY,
+                max_vol REAL,
+                max_oi REAL,
+                first_date TEXT,
+                last_date TEXT,
+                last_status TEXT,
+                report_ticker TEXT
+            )
+        """)
+        conn.commit()
+
+        def process_date(d, retries=5):
             url = self._get_url_for_date(d)
             ticker_vital_signs = {}
-            try:
-                # Use faster streaming and parsing
-                with requests.get(url, stream=True, timeout=60) as r:
-                    if r.status_code == 200:
-                        # We use a custom parser to avoid full JSON load of the whole file at once
-                        buffer = []
-                        for chunk in r.iter_content(chunk_size=1024*1024):
-                            if not chunk: continue
-                            chunk_str = chunk.decode('utf-8', errors='ignore')
-                            parts = chunk_str.split('},')
-                            
-                            if len(parts) == 1:
-                                buffer.append(parts[0])
-                            else:
-                                buffer.append(parts[0])
-                                full_obj_str = "".join(buffer) + "}"
-                                self._update_vitals(ticker_vital_signs, full_obj_str, d)
+            for attempt in range(retries):
+                try:
+                    # Use faster streaming and parsing
+                    with requests.get(url, stream=True, timeout=60) as r:
+                        if r.status_code == 200:
+                            buffer = []
+                            for chunk in r.iter_content(chunk_size=1024*1024):
+                                if not chunk: continue
+                                chunk_str = chunk.decode('utf-8', errors='ignore')
+                                parts = chunk_str.split('},')
                                 
-                                for i in range(1, len(parts) - 1):
-                                    self._update_vitals(ticker_vital_signs, parts[i] + "}", d)
-                                
-                                buffer = [parts[-1]]
-                return ticker_vital_signs
-            except Exception as e:
-                logger.error(f"Error scanning tickers for {d}: {e}")
-                return {}
+                                if len(parts) == 1:
+                                    buffer.append(parts[0])
+                                else:
+                                    buffer.append(parts[0])
+                                    full_obj_str = "".join(buffer) + "}"
+                                    self._update_vitals(ticker_vital_signs, full_obj_str, d)
+                                    
+                                    for i in range(1, len(parts) - 1):
+                                        self._update_vitals(ticker_vital_signs, parts[i] + "}", d)
+                                    
+                                    buffer = [parts[-1]]
+                            return ticker_vital_signs
+                        elif r.status_code == 404:
+                            return {} # File doesn't exist, skip
+                        else:
+                            r.raise_for_status()
+                except (requests.exceptions.RequestException, ConnectionError, requests.exceptions.Timeout) as e:
+                    if attempt < retries - 1:
+                        sleep_time = 2 ** attempt
+                        logger.warning(f"  Transient error for {d}: {e}. Retrying in {sleep_time}s...")
+                        time.sleep(sleep_time)
+                    else:
+                        logger.error(f"  Failed scanning tickers for {d} after {retries} attempts: {e}")
+                        return {}
+            return {}
 
-        all_vitals = {}
         processed_count = 0
+        ticker_count = 0
+        
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {executor.submit(process_date, d): d for d in dates}
             for future in as_completed(futures):
                 day_vitals = future.result()
-                # Merge vital signs
-                for ticker, vitals in day_vitals.items():
-                    if ticker not in all_vitals:
-                        all_vitals[ticker] = vitals
-                    else:
-                        existing = all_vitals[ticker]
-                        existing["max_vol"] = max(existing["max_vol"], vitals["max_vol"])
-                        existing["max_oi"] = max(existing["max_oi"], vitals["max_oi"])
-                        existing["last_date"] = max(existing["last_date"], vitals["last_date"])
-                        existing["last_status"] = vitals["last_status"] # Assume chronological merge
+                if day_vitals:
+                    # Batch insert into SQLite
+                    # We use INSERT OR REPLACE and manual max() logic if we want to be perfect, 
+                    # but since we are processing dates in random order, we should use a more robust merge.
+                    # Actually, a simple way is to insert everything and then aggregate, 
+                    # but that would be a very large table.
+                    # Let's use INSERT OR REPLACE but we need to keep the best values.
+                    
+                    rows = []
+                    for ticker, v in day_vitals.items():
+                        rows.append((
+                            ticker, v["max_vol"], v["max_oi"], v["first_date"], 
+                            v["last_date"], v["last_status"], v["report_ticker"]
+                        ))
+                    
+                    # Optimized Upsert for SQLite 3.24+
+                    conn.executemany("""
+                        INSERT INTO vitals (ticker, max_vol, max_oi, first_date, last_date, last_status, report_ticker)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(ticker) DO UPDATE SET
+                            max_vol = MAX(max_vol, excluded.max_vol),
+                            max_oi = MAX(max_oi, excluded.max_oi),
+                            first_date = MIN(first_date, excluded.first_date),
+                            last_date = MAX(last_date, excluded.last_date),
+                            last_status = CASE WHEN excluded.last_date >= last_date THEN excluded.last_status ELSE last_status END,
+                            report_ticker = COALESCE(report_ticker, excluded.report_ticker)
+                    """, rows)
+                    conn.commit()
                 
                 processed_count += 1
                 if processed_count % 20 == 0 or processed_count == len(dates):
-                    logger.info(f"  Scanned {processed_count}/{len(dates)} files... ({len(all_vitals)} unique tickers tracked)")
-                
+                    ticker_count = conn.execute("SELECT count(*) FROM vitals").fetchone()[0]
+                    logger.info(f"  Scanned {processed_count}/{len(dates)} files... ({ticker_count} unique tickers tracked)")
+        
+        # Finally, we return the filtered map of ONLY active tickers to save memory
+        logger.info("Filtering for active tickers in SQLite...")
+        active_query = """
+            SELECT * FROM vitals 
+            WHERE max_vol > 0 
+               OR max_oi > 0 
+               OR last_status IN ('finalized', 'determined', 'settled')
+        """
+        all_vitals = {}
+        for row in conn.execute(active_query):
+            ticker = row[0]
+            all_vitals[ticker] = {
+                "max_vol": row[1],
+                "max_oi": row[2],
+                "first_date": row[3],
+                "last_date": row[4],
+                "last_status": row[5],
+                "report_ticker": row[6]
+            }
+        
+        conn.close()
+        try:
+            temp_db_path.unlink()
+        except:
+            pass
+            
+        logger.info(f"Scan complete. Found {len(all_vitals)} active tickers (out of {ticker_count} total).")
         return all_vitals
 
     def _update_vitals(self, vitals_dict: Dict[str, Any], obj_str: str, d: date):

@@ -402,25 +402,34 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
         metadata_batch = {m["ticker"]: map_kalshi_market(m).model_dump(mode='json') for m in k_markets}
         store.save_batch("kalshi", metadata_batch, {})
     elif start_date and end_date:
-        # STEP A: Aggressive Discovery and Activity Scan from S3
-        vitals_map = kalshi_bulk.scan_all_tickers(start_date, end_date, workers=num_workers)
+        # Get list of already processed dates to skip them in the scan
+        current_date = start_date
+        dates_to_scan = []
+        while current_date <= end_date:
+            if not (use_cache and store.is_date_processed("kalshi", current_date)):
+                dates_to_scan.append(current_date)
+            current_date += timedelta(days=1)
+
+        # STEP A: Aggressive Discovery and Activity Scan from S3 (Only for new dates)
+        if dates_to_scan:
+            vitals_map = kalshi_bulk.scan_all_tickers(dates_to_scan[0], dates_to_scan[-1], workers=num_workers)
+        else:
+            logger.info("All Kalshi dates in range already processed. Skipping S3 scan.")
+            vitals_map = {}
         
         # STEP B: Aggressive Filtering
         # We only keep markets that have EVER shown volume or open interest.
-        # This eliminates millions of "noise" tickers that were never traded.
-        active_tickers = []
-        for ticker, vitals in vitals_map.items():
-            if vitals["max_vol"] > 0 or vitals["max_oi"] > 0:
-                active_tickers.append(ticker)
-            elif vitals["last_status"] in ["finalized", "determined", "settled"]:
-                # Also keep settled markets even if volume was 0 on the days we saw,
-                # as they represent resolved outcomes.
-                active_tickers.append(ticker)
+        # This is now mostly handled inside scan_all_tickers to save memory.
+        active_tickers = list(vitals_map.keys())
         
-        logger.info(f"Filtering complete: {len(active_tickers)} active tickers identified (from {len(vitals_map)} discovered).")
+        logger.info(f"Filtering complete: {len(active_tickers)} active tickers identified.")
         
         # STEP C: Filter missing metadata for active tickers
-        missing_tickers = [t for t in active_tickers if t not in existing_statuses or not existing_statuses[t]]
+        # We only consider it "missing" if it's not in the DB OR if it only has minimal S3 metadata
+        missing_tickers = [
+            t for t in active_tickers 
+            if t not in existing_statuses or existing_statuses[t] in ["unknown", "Bulk-only"]
+        ]
         if limit: missing_tickers = missing_tickers[:limit]
         
         # STEP D: Pre-populate with S3 Minimal Metadata (Zero API calls)
