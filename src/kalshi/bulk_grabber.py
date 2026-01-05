@@ -81,12 +81,14 @@ class KalshiBulkGrabber:
                     logger.error(f"Failed to finish {target_date} after {retries} attempts.")
                     raise
 
-    def scan_all_tickers(self, start_date: date, end_date: date, workers: int = 14) -> List[str]:
-        """Scan S3 bulk files in parallel to find all unique tickers in a date range."""
-        import re
+    def scan_all_tickers(self, start_date: date, end_date: date, workers: int = 14) -> Dict[str, Dict[str, Any]]:
+        """
+        Scan S3 bulk files in parallel to find unique tickers and their activity levels.
+        Aggressively identifies which markets are actually 'alive' (have volume/interest).
+        """
         from concurrent.futures import ThreadPoolExecutor, as_completed
         
-        logger.info(f"Scanning S3 bulk files for tickers between {start_date} and {end_date}...")
+        logger.info(f"Aggressively scanning S3 bulk files for activity between {start_date} and {end_date}...")
         
         dates = []
         curr = start_date
@@ -94,36 +96,89 @@ class KalshiBulkGrabber:
             dates.append(curr)
             curr += timedelta(days=1)
             
-        unique_tickers = set()
-        ticker_regex = re.compile(r'"ticker_name":\s*"([^"]+)"')
-        
         def process_date(d):
             url = self._get_url_for_date(d)
-            tickers = set()
+            ticker_vital_signs = {}
             try:
-                # Use a larger chunk size for scanning
-                with requests.get(url, stream=True, timeout=30) as r:
+                # Use faster streaming and parsing
+                with requests.get(url, stream=True, timeout=60) as r:
                     if r.status_code == 200:
+                        # We use a custom parser to avoid full JSON load of the whole file at once
+                        buffer = []
                         for chunk in r.iter_content(chunk_size=1024*1024):
-                            text = chunk.decode('utf-8', errors='ignore')
-                            tickers.update(ticker_regex.findall(text))
-                return tickers
+                            if not chunk: continue
+                            chunk_str = chunk.decode('utf-8', errors='ignore')
+                            parts = chunk_str.split('},')
+                            
+                            if len(parts) == 1:
+                                buffer.append(parts[0])
+                            else:
+                                buffer.append(parts[0])
+                                full_obj_str = "".join(buffer) + "}"
+                                self._update_vitals(ticker_vital_signs, full_obj_str, d)
+                                
+                                for i in range(1, len(parts) - 1):
+                                    self._update_vitals(ticker_vital_signs, parts[i] + "}", d)
+                                
+                                buffer = [parts[-1]]
+                return ticker_vital_signs
             except Exception as e:
                 logger.error(f"Error scanning tickers for {d}: {e}")
-                return set()
+                return {}
 
+        all_vitals = {}
         processed_count = 0
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {executor.submit(process_date, d): d for d in dates}
             for future in as_completed(futures):
-                res = future.result()
-                unique_tickers.update(res)
-                processed_count += 1
-                if processed_count % 10 == 0 or processed_count == len(dates):
-                    logger.info(f"  Scanned {processed_count}/{len(dates)} files... ({len(unique_tickers)} tickers found)")
+                day_vitals = future.result()
+                # Merge vital signs
+                for ticker, vitals in day_vitals.items():
+                    if ticker not in all_vitals:
+                        all_vitals[ticker] = vitals
+                    else:
+                        existing = all_vitals[ticker]
+                        existing["max_vol"] = max(existing["max_vol"], vitals["max_vol"])
+                        existing["max_oi"] = max(existing["max_oi"], vitals["max_oi"])
+                        existing["last_date"] = max(existing["last_date"], vitals["last_date"])
+                        existing["last_status"] = vitals["last_status"] # Assume chronological merge
                 
-        logger.info(f"Scan complete. Found {len(unique_tickers)} unique tickers.")
-        return sorted(list(unique_tickers))
+                processed_count += 1
+                if processed_count % 20 == 0 or processed_count == len(dates):
+                    logger.info(f"  Scanned {processed_count}/{len(dates)} files... ({len(all_vitals)} unique tickers tracked)")
+                
+        return all_vitals
+
+    def _update_vitals(self, vitals_dict: Dict[str, Any], obj_str: str, d: date):
+        """Helper to update ticker vitals from a single JSON object string."""
+        clean_obj = obj_str.lstrip('[, \n\r')
+        if not clean_obj.endswith('}'): return
+        try:
+            obj = json.loads(clean_obj)
+            ticker = obj.get("ticker_name")
+            if not ticker: return
+            
+            vol = float(obj.get("daily_volume", 0) or 0)
+            oi = float(obj.get("open_interest", 0) or 0)
+            status = obj.get("status", "unknown")
+            
+            if ticker not in vitals_dict:
+                vitals_dict[ticker] = {
+                    "max_vol": vol,
+                    "max_oi": oi,
+                    "first_date": d.isoformat(),
+                    "last_date": d.isoformat(),
+                    "last_status": status,
+                    "report_ticker": obj.get("report_ticker")
+                }
+            else:
+                v = vitals_dict[ticker]
+                v["max_vol"] = max(v["max_vol"], vol)
+                v["max_oi"] = max(v["max_oi"], oi)
+                v["last_date"] = d.isoformat()
+                v["last_status"] = status
+        except:
+            pass
 
     def map_to_timeseries(self, raw_record: Dict[str, Any]) -> TimeSeriesPoint:
         """Map a raw bulk record to a canonical TimeSeriesPoint."""

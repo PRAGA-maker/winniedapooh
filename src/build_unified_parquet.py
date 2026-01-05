@@ -21,7 +21,7 @@ from src.common.parquet import write_parquet_dataset
 from src.common.logging import logger
 from src.common.config import config
 
-def process_kalshi_day(target_date: date, limit: Optional[int] = None):
+def process_kalshi_day(target_date: date, allowed_tickers: Optional[set] = None):
     """Worker function to process a single day of Kalshi bulk data."""
     bulk_grabber = KalshiBulkGrabber()
     day_points = []
@@ -31,15 +31,13 @@ def process_kalshi_day(target_date: date, limit: Optional[int] = None):
         for raw_record in bulk_grabber.fetch_daily_bulk_stream(target_date):
             ticker = raw_record["ticker_name"]
             
-            # If we are in "Test Mode" (limit is small), we might want to filter.
-            # But in full build, we process all tickers found in bulk.
+            # AGGRESSIVE FILTERING: Skip tickers not in our allowed set (the active ones)
+            if allowed_tickers is not None and ticker not in allowed_tickers:
+                continue
 
             try:
                 ts_point = bulk_grabber.map_to_timeseries(raw_record)
                 
-                # We'll create a minimal fallback record here if metadata is missing.
-                # The DB layer will use INSERT OR IGNORE, so if we already have 
-                # rich metadata from the API, this minimal one will be ignored.
                 m_record = {
                     "source": "kalshi",
                     "market_id": ticker,
@@ -250,6 +248,82 @@ class CanonicalStore:
         key = f"processed_date_{target_date.isoformat()}"
         self.set_checkpoint(source, key, "done")
 
+    def load_and_write_partitioned(self, output_dir: Path):
+        """Load from SQLite and write to Parquet in partitions to avoid OOM on limited RAM."""
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+        
+        logger.info("Starting partitioned export from SQLite to Parquet...")
+        
+        # 1. Fetch all market metadata (Static info is small relative to history)
+        with self._get_conn() as conn:
+            markets_df = pd.read_sql("SELECT * FROM markets", conn)
+            # Pre-convert times
+            markets_df["end_time"] = pd.to_datetime(markets_df["end_time"], errors='coerce')
+            markets_df["created_time"] = pd.to_datetime(markets_df["created_time"], errors='coerce')
+
+        # 2. Process history in chunks
+        # We'll fetch history group by group (e.g. 50,000 markets at a time)
+        # to keep the memory footprint manageable.
+        unique_market_keys = markets_df[["source", "market_id"]].values.tolist()
+        chunk_size = 50000 # Tune this based on actual RAM (~50k markets + history should fit in <8GB)
+        
+        writer = None
+        parquet_file = output_dir / "data.parquet"
+
+        for i in range(0, len(unique_market_keys), chunk_size):
+            chunk_keys = unique_market_keys[i : i + chunk_size]
+            
+            # Build a query for this chunk of market IDs
+            # SQLite has a limit on parameters, so we use a temp table or a long IN clause if small enough
+            # But since we have 18M, a temp table is much better.
+            with self._get_conn() as conn:
+                conn.execute("CREATE TEMPORARY TABLE chunk_ids (source TEXT, market_id TEXT)")
+                conn.executemany("INSERT INTO chunk_ids VALUES (?, ?)", chunk_keys)
+                
+                history_df = pd.read_sql("""
+                    SELECT h.source, h.market_id, h.ts, h.belief_scalar, h.volume, h.open_interest, h.bid, h.ask 
+                    FROM history h
+                    JOIN chunk_ids c ON h.source = c.source AND h.market_id = c.market_id
+                    ORDER BY h.source, h.market_id, h.ts
+                """, conn)
+                conn.execute("DROP TABLE chunk_ids")
+
+            if history_df.empty:
+                continue
+
+            # Aggregate history
+            history_df["ts"] = pd.to_datetime(history_df["ts"], format='ISO8601', errors='coerce')
+            history_agg = history_df.groupby(["source", "market_id"]).agg({
+                "ts": list,
+                "belief_scalar": list,
+                "volume": list,
+                "open_interest": list,
+                "bid": list,
+                "ask": list
+            }).reset_index().rename(columns={"belief_scalar": "belief"})
+
+            # Merge with metadata subset
+            chunk_markets = markets_df[i : i + chunk_size]
+            unified_chunk = pd.merge(chunk_markets, history_agg, on=["source", "market_id"], how="inner")
+            
+            if unified_chunk.empty:
+                continue
+
+            # Write to Parquet (Append mode)
+            table = pa.Table.from_pandas(unified_chunk, preserve_index=False)
+            if writer is None:
+                writer = pq.ParquetWriter(parquet_file, table.schema)
+            writer.write_table(table)
+            
+            logger.info(f"  Exported chunk {i//chunk_size + 1}/{(len(unique_market_keys)-1)//chunk_size + 1} ({len(unified_chunk)} markets)")
+
+        if writer:
+            writer.close()
+            logger.info(f"Partitioned Parquet build complete: {parquet_file}")
+        else:
+            logger.error("No data was exported to Parquet.")
+
     def load_all_df(self) -> pd.DataFrame:
         """Return all stored canonical records in unified format as a Pandas DataFrame."""
         logger.info("Loading all canonical records from SQLite...")
@@ -328,29 +402,64 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
         metadata_batch = {m["ticker"]: map_kalshi_market(m).model_dump(mode='json') for m in k_markets}
         store.save_batch("kalshi", metadata_batch, {})
     elif start_date and end_date:
-        # STEP A: Discovery from S3
-        discovered_tickers = kalshi_bulk.scan_all_tickers(start_date, end_date, workers=num_workers)
+        # STEP A: Aggressive Discovery and Activity Scan from S3
+        vitals_map = kalshi_bulk.scan_all_tickers(start_date, end_date, workers=num_workers)
         
-        # STEP B: Filter missing metadata
-        missing_tickers = [t for t in discovered_tickers if t not in existing_statuses or not existing_statuses[t]]
+        # STEP B: Aggressive Filtering
+        # We only keep markets that have EVER shown volume or open interest.
+        # This eliminates millions of "noise" tickers that were never traded.
+        active_tickers = []
+        for ticker, vitals in vitals_map.items():
+            if vitals["max_vol"] > 0 or vitals["max_oi"] > 0:
+                active_tickers.append(ticker)
+            elif vitals["last_status"] in ["finalized", "determined", "settled"]:
+                # Also keep settled markets even if volume was 0 on the days we saw,
+                # as they represent resolved outcomes.
+                active_tickers.append(ticker)
+        
+        logger.info(f"Filtering complete: {len(active_tickers)} active tickers identified (from {len(vitals_map)} discovered).")
+        
+        # STEP C: Filter missing metadata for active tickers
+        missing_tickers = [t for t in active_tickers if t not in existing_statuses or not existing_statuses[t]]
         if limit: missing_tickers = missing_tickers[:limit]
         
-        # STEP C: Batch Enrich Metadata from API
+        # STEP D: Pre-populate with S3 Minimal Metadata (Zero API calls)
         if missing_tickers:
-            logger.info(f"Enriching metadata for {len(missing_tickers)} missing tickers in batches...")
+            logger.info(f"Pre-populating DB with S3 metadata for {len(missing_tickers)} tickers...")
+            s3_metadata_batch = {}
+            for t in missing_tickers:
+                v = vitals_map[t]
+                # Map S3 vitals to a basic MarketRecord
+                s3_metadata_batch[t] = {
+                    "source": "kalshi",
+                    "market_id": t,
+                    "event_id": v.get("report_ticker"),
+                    "title": t, # Fallback title
+                    "description": f"S3-sourced record (Max Vol: {v['max_vol']}, Max OI: {v['max_oi']})",
+                    "url": f"https://kalshi.com/markets/{t}",
+                    "market_type": "binary",
+                    "answer_options_json": json.dumps(["NO", "YES"]),
+                    "end_time": v["last_date"], # Fallback
+                    "status": "unknown"
+                }
+            store.save_batch("kalshi", s3_metadata_batch, {})
+            
+            # STEP E: Targeted Rich Metadata Enrichment from API (100x Lever)
+            # Now we hit the API ONLY for these active, missing tickers.
+            logger.info(f"Enriching with Rich Metadata for {len(missing_tickers)} active tickers...")
             new_markets = kalshi_grabber.fetch_markets(tickers=missing_tickers)
-            metadata_batch = {}
+            api_metadata_batch = {}
             for m in new_markets:
                 try:
                     record = map_kalshi_market(m)
-                    metadata_batch[m["ticker"]] = record.model_dump(mode='json')
+                    api_metadata_batch[m["ticker"]] = record.model_dump(mode='json')
                 except Exception: continue
             
-            if metadata_batch:
-                store.save_batch("kalshi", metadata_batch, {})
-                logger.info(f"Saved metadata for {len(metadata_batch)} new Kalshi markets.")
+            if api_metadata_batch:
+                store.save_batch("kalshi", api_metadata_batch, {})
+                logger.info(f"Saved rich metadata for {len(api_metadata_batch)} active Kalshi markets.")
         
-        # STEP D: History Ingestion (Continue as before but with more workers)
+        # STEP F: History Ingestion
         current_date = start_date
         dates_to_process = []
         while current_date <= end_date:
@@ -363,8 +472,9 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
         if dates_to_process:
             logger.info(f"Processing {len(dates_to_process)} days of Kalshi history in parallel...")
             processed_days = 0
+            allowed_set = set(active_tickers) # Use the aggressively filtered set
             with ProcessPoolExecutor(max_workers=num_workers) as executor:
-                futures = {executor.submit(process_kalshi_day, d, limit): d for d in dates_to_process}
+                futures = {executor.submit(process_kalshi_day, d, allowed_set): d for d in dates_to_process}
                 for future in as_completed(futures):
                     target_date, day_points, records_count = future.result()
                     if day_points:
@@ -498,13 +608,21 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
             store.save_batch("metaculus", metaculus_market_records, metaculus_timeseries_map)
 
     # 4. Build Final Unified Dataset
-    unified_df = store.load_all_df()
-    if unified_df.empty:
-        logger.error("No data collected. Aborting.")
-        return
-
     version = datetime.now().strftime("%Y%m%d_%H%M")
-    write_parquet_dataset(unified_df, "unified", version=version)
+    output_dir = config.datasets_dir / f"v{version}_unified"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    store.load_and_write_partitioned(output_dir)
+    
+    # Write manifest manually since we skipped write_parquet_dataset
+    manifest = {
+        "version": version,
+        "dataset_name": "unified",
+        "created_at": datetime.now().isoformat(),
+        "row_count": len(store.get_existing_market_ids("kalshi")) + len(store.get_existing_market_ids("metaculus"))
+    }
+    with open(output_dir / "manifest.json", "w") as f:
+        json.dump(manifest, f, indent=2)
     
     logger.info("Unified dataset build complete.")
 
