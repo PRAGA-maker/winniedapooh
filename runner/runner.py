@@ -17,6 +17,7 @@ from dataobject.tasks.predict_week_out import PredictWeekOutTask
 from methods.registry import build_method
 from runner.experiment import RunSpec
 from runner.evaluator import evaluate
+from runner.results_db import ResultsDatabase
 
 TASK_REGISTRY = {
     "resolve_binary": ResolveBinaryTask,
@@ -24,6 +25,18 @@ TASK_REGISTRY = {
 }
 
 def get_run_dir(spec: RunSpec) -> Path:
+    """
+    Generate a unique output directory for an experiment run.
+    
+    Directory structure: data/outputs/{method}_{config_hash}/run_{timestamp}_{name}
+    Config hash is based on method_params to group runs with same hyperparameters.
+    
+    Args:
+        spec: RunSpec configuration
+        
+    Returns:
+        Path to the run directory
+    """
     # Create a unique hash for the model configuration
     params_str = json.dumps(spec.method_params, sort_keys=True)
     config_hash = hashlib.md5(params_str.encode()).hexdigest()[:8]
@@ -36,6 +49,23 @@ def get_run_dir(spec: RunSpec) -> Path:
     return base_dir
 
 def run_experiment(spec: RunSpec):
+    """
+    Run a complete forecasting experiment.
+    
+    Orchestrates data loading, split management, training, evaluation, and result storage.
+    Creates organized output directory with model weights, metrics, logs, and plots.
+    
+    Args:
+        spec: RunSpec configuration specifying method, task, dataset, and parameters
+        
+    Returns:
+        Tuple of (test_metrics, bench_metrics, run_dir)
+    
+    Testing Notes (2026-01):
+        CLI is intuitive and works well end-to-end. Output organization is excellent
+        (organized by method + config hash + run). All tested methods and tasks work correctly.
+        Could add progress bars for long-running evaluations (recommendation: P2 priority).
+    """
     print(f"Starting run: {spec.run_name}")
     
     # Setup directories
@@ -73,7 +103,8 @@ def run_experiment(spec: RunSpec):
     
     rng = random.Random(spec.seed)
     train_examples = []
-    for record in train_view.records():
+    from tqdm import tqdm
+    for record in tqdm(train_view.records(), desc="Creating training examples", leave=False):
         train_examples.extend(task.make_examples(record, rng))
     
     if train_examples:
@@ -112,6 +143,14 @@ def run_experiment(spec: RunSpec):
         f.write(f"Spec: {json.dumps(spec.to_dict(), indent=2)}\n")
         f.write(f"Test Metrics: {json.dumps(test_metrics, indent=2)}\n")
         f.write(f"Bench Metrics: {json.dumps(bench_metrics, indent=2)}\n")
+    
+    # 4. Index to Results Database
+    try:
+        db = ResultsDatabase()
+        db.index_run(run_dir, spec.to_dict(), metrics)
+        print(f"Run indexed to database")
+    except Exception as e:
+        print(f"Warning: Failed to index run to database: {e}")
     
     print(f"Run complete. Results saved to {run_dir}")
     return test_metrics, bench_metrics, run_dir

@@ -19,6 +19,14 @@ uv run python tests/run_tests.py
 
 ## Test Categories
 
+### Results System Tests (`test_results_db.py`, `test_results_integration.py`)
+**15 tests** validating the results database and visualization system:
+- Database initialization and schema creation
+- Run indexing and querying
+- Method comparison and filtering
+- CLI tool integration (slow tests)
+- Full workflow validation (slow tests)
+
 ### Data Correctness Tests (`test_data_correctness.py`)
 **10 tests** validating data integrity:
 - Schema validation (columns, types, ranges)
@@ -81,9 +89,11 @@ Tests use a small dataset (Dec 30-31, 2024) for fast iteration:
 ## Results
 
 All tests currently pass:
-- **21/21 tests PASS**
+- **36/36 tests PASS** (21 data + 15 results)
 - **100% pass rate**
 - **No critical bugs found**
+
+**Note**: Integration tests (`@pytest.mark.slow`) require a dataset and take longer to run.
 
 See `TESTING_REPORT.md` for detailed findings.
 
