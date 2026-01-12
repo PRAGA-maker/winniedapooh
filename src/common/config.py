@@ -28,7 +28,22 @@ class Config:
             if key_path.exists():
                 self.kalshi_private_key = key_path.read_text()
         
-        self.metaculus_token = os.getenv("METACULUS_TOKEN")
+        # Load multiple Metaculus tokens for rotation
+        self.metaculus_tokens = []
+        i = 1
+        while True:
+            token = os.getenv(f"METACULUS_TOKEN_{i}")
+            if token:
+                self.metaculus_tokens.append(token)
+                i += 1
+            else:
+                break
+        
+        # Fallback to old METACULUS_TOKEN for backward compatibility
+        if not self.metaculus_tokens:
+            legacy_token = os.getenv("METACULUS_TOKEN")
+            if legacy_token:
+                self.metaculus_tokens.append(legacy_token)
         
         # Concurrency / Rate Limits
         self.kalshi_rate_limit = 20  # req/sec
@@ -37,4 +52,13 @@ class Config:
         self.kalshi_candle_interval = 60  # minutes
 
 config = Config()
+
+# --- NOTES ---
+# Metaculus Token Loading: Loads multiple tokens from environment variables for key rotation.
+# Format: METACULUS_TOKEN_1, METACULUS_TOKEN_2, METACULUS_TOKEN_3, etc.
+# Keys must be numbered sequentially starting from 1, no gaps allowed.
+# System loads keys until it finds a missing number (e.g., if METACULUS_TOKEN_3 is missing,
+# only tokens 1 and 2 are loaded, even if METACULUS_TOKEN_4 exists).
+# Falls back to legacy METACULUS_TOKEN if no numbered tokens found (backward compatibility).
+# Usage: Add tokens to .env file, restart application. Rotation system in http.py handles the rest.
 

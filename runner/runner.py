@@ -13,12 +13,14 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from dataobject.dataset import MarketDataset
 from dataobject.splits import SplitManager
 from dataobject.tasks.resolve_binary import ResolveBinaryTask
+from dataobject.tasks.predict_week_out import PredictWeekOutTask
 from methods.registry import build_method
 from runner.experiment import RunSpec
 from runner.evaluator import evaluate
 
 TASK_REGISTRY = {
-    "resolve_binary": ResolveBinaryTask
+    "resolve_binary": ResolveBinaryTask,
+    "predict_week_out": PredictWeekOutTask
 }
 
 def get_run_dir(spec: RunSpec) -> Path:

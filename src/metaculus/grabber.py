@@ -53,3 +53,10 @@ class MetaculusGrabber:
         data = response.json()
         return data
 
+# --- NOTES ---
+# Key Rotation: This grabber uses get_metaculus_client() which automatically handles API key rotation.
+# Multiple keys can be configured via METACULUS_TOKEN_1, METACULUS_TOKEN_2, etc. in .env.
+# The rotation system (in http.py) automatically switches keys on rate limits (429) and preemptively
+# rotates at 90% usage threshold. With 2 keys, expect ~2x speedup (99.7% efficiency).
+# See http.py LESSONS LEARNED section for detailed implementation notes.
+
