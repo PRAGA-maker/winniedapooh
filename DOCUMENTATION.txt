@@ -12,13 +12,28 @@ platforms (Metaculus) into a unified format for testing forecasting models.
 
 Prerequisites: Python 3.13+, `uv` (package manager).
 
+**Installing `uv`** (if not already installed):
+- **macOS/Linux**: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- **Windows (PowerShell)**: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
+- **Alternative**: `pip install uv` or `brew install uv`
+
+**After installation**, add `uv` to your PATH:
+- Run: `source $HOME/.local/bin/env` (or restart your terminal)
+- Verify: `uv --version`
+
 | Step | Command | Description |
 |------|---------|-------------|
-| 1 | `uv sync` | Install dependencies. |
-| 2 | `cp .env.example .env` | Configure API keys (Kalshi/Metaculus). |
-| 3 | `uv run scripts/build_db.py --start 2023-01-01 --end 2025-12-31` | Fetch data (S3-first discovery) and build dataset. |
+| 1 | `uv sync` or `uv sync --all-groups` | Install dependencies. Use `--all-groups` to include dev dependencies (pytest, etc.). |
+| 2 | `cp .env.example .env` | Configure API keys (Kalshi/Metaculus). Skip if `.env.example` doesn't exist. |
+| 3 | `uv run scripts/build_db.py --start 2023-01-01 --end 2025-12-31` | Fetch data from Kalshi's public S3 bucket and build dataset. |
 | 4 | `uv run runner/runner.py --method mlp_nn` | Run a benchmarking experiment. |
 | 5 | `uv run scripts/inspect_parquet.py` | View summary statistics of the latest dataset. |
+
+**Troubleshooting `uv sync`**:
+- If `uv: command not found`: Install `uv` using the commands above
+- If sync fails: Try `uv sync --all-groups` (includes dev dependencies)
+- Alternative: `uv pip install -e .` (if `uv sync` doesn't work)
+- Ensure `uv.lock` file exists and is up to date
 
 --------------------------------------------------------------------------------
 2. DATA SCHEMA
@@ -30,7 +45,7 @@ Parquet format.
 A. MarketRecord (The "Static" Info)
 Defined in `src/common/schema.py`.
 
-*Optimization Note*: Kalshi metadata is enriched in batches of 100 via the `/markets?tickers=...` endpoint after discovering unique tickers from S3 bulk files. This provides a ~100x speedup over one-by-one enrichment.
+*Optimization Note*: The pipeline uses Kalshi's **public S3 bucket** (`kalshi-public-docs.s3.amazonaws.com/reporting`) to download bulk historical market data files. This is Kalshi's publicly available data repository - no credentials needed. Metadata is then enriched in batches of 100 via the `/markets?tickers=...` API endpoint after discovering unique tickers from the S3 bulk files. This provides a ~100x speedup over one-by-one enrichment.
 
 | Field | Type | Description |
 |-------|------|-------------|
