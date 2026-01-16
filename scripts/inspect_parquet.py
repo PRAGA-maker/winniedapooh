@@ -4,8 +4,24 @@ import json
 
 def inspect_latest_parquet():
     datasets_dir = Path("data/datasets")
-    latest_dataset = sorted(datasets_dir.glob("v*_unified"))[-1]
+    datasets_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Find all dataset directories
+    datasets = sorted(datasets_dir.glob("v*_unified"))
+    if not datasets:
+        print("No datasets found in data/datasets/")
+        print("\nTo create a dataset, run:")
+        print("  uv run scripts/build_db.py --start 2023-01-01 --end 2025-12-31")
+        return
+    
+    latest_dataset = datasets[-1]
     parquet_path = latest_dataset / "data.parquet"
+    
+    if not parquet_path.exists():
+        print(f"Dataset directory found: {latest_dataset}")
+        print(f"But parquet file not found: {parquet_path}")
+        print("\nThe dataset may be incomplete. Try rebuilding it.")
+        return
     
     print(f"Inspecting: {parquet_path}")
     df = pd.read_parquet(parquet_path)

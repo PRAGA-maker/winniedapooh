@@ -11,3 +11,4 @@ data/outputs/
 .cursor/
 kalshi_key.pem
 *.pem
+*.db

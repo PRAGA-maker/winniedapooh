@@ -45,13 +45,16 @@ Parquet format.
 A. MarketRecord (The "Static" Info)
 Defined in `src/common/schema.py`.
 
-*Optimization Note*: The pipeline uses Kalshi's **public S3 bucket** (`kalshi-public-docs.s3.amazonaws.com/reporting`) to download bulk historical market data files. This is Kalshi's publicly available data repository - no credentials needed. Metadata is then enriched in batches of 100 via the `/markets?tickers=...` API endpoint after discovering unique tickers from the S3 bulk files. This provides a ~100x speedup over one-by-one enrichment.
+*Optimization Note*: The pipeline uses Kalshi's **public S3 bucket** (`kalshi-public-docs.s3.amazonaws.com/reporting`) 
+to download bulk historical market data files. This is Kalshi's publicly available data repository - no credentials needed. 
+Metadata is then enriched in batches of 100 via the `/markets?tickers=...` 
+API endpoint after discovering unique tickers from the S3 bulk files. This provides a ~100x speedup over one-by-one enrichment.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| source | str | "kalshi" or "metaculus" |
-| market_id | str | Unique ID within the source. |
-| title | str | Question/Market name. |
+| source| str | "kalshi" or "metaculus" |
+|market_id| str| Unique ID within the source. |
+| title  | str | Question/Market name. |
 | description | str | Full context of the question. |
 | url | str | Link to the original platform. |
 | market_type | Enum | binary, multiple_choice, numeric, or other. |
