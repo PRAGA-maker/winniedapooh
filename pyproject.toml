@@ -6,6 +6,8 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "cryptography>=46.0.3",
+    "datasets>=2.18.0",
+    "huggingface_hub>=0.19.0",
     "pandas>=2.3.3",
     "pyarrow>=22.0.0",
     "pydantic>=2.12.5",

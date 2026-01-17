@@ -24,6 +24,74 @@ TASK_REGISTRY = {
     "predict_week_out": PredictWeekOutTask
 }
 
+def _ensure_dataset_available(data_dir: Path) -> Path:
+    """
+    Ensure dataset exists locally, downloading from Hugging Face if needed.
+    
+    Args:
+        data_dir: Path to data/datasets directory
+        
+    Returns:
+        Path to dataset directory (either existing or newly downloaded)
+        
+    Raises:
+        SystemExit: If download fails or no dataset can be obtained
+    """
+    data_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Check for existing local datasets
+    datasets = sorted(list(data_dir.glob("v*_unified")))
+    if datasets:
+        return datasets[-1]
+    
+    # No local dataset found - download from Hugging Face
+    print("No local dataset found. Downloading from Hugging Face...")
+    print("Dataset: carpetxie/winniethepooh")
+    
+    try:
+        from datasets import load_dataset
+        import pandas as pd
+        
+        # Load dataset from Hugging Face
+        print("Downloading dataset...")
+        hf_dataset = load_dataset("carpetxie/winniethepooh", split="train")
+        
+        # Convert to pandas DataFrame
+        df = hf_dataset.to_pandas()
+        
+        # Create versioned directory matching local build format
+        from datetime import datetime
+        version = datetime.now().strftime("%Y%m%d_%H%M")
+        output_dir = data_dir / f"v{version}_unified"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Save as parquet to match local build structure
+        parquet_path = output_dir / "data.parquet"
+        df.to_parquet(parquet_path, index=False)
+        
+        # Create manifest to match local build format
+        manifest = {
+            "version": version,
+            "dataset_name": "unified",
+            "created_at": datetime.now().isoformat(),
+            "row_count": len(df),
+            "source": "huggingface"
+        }
+        manifest_path = output_dir / "manifest.json"
+        with open(manifest_path, "w") as f:
+            json.dump(manifest, f, indent=2)
+        
+        print(f"Dataset downloaded to: {output_dir}")
+        print(f"Loaded {len(df)} rows")
+        
+        return output_dir
+        
+    except Exception as e:
+        print(f"Failed to download dataset from Hugging Face: {e}")
+        print("Please run scripts/build_db.py to build a local dataset, or")
+        print("ensure you have network access and huggingface_hub installed.")
+        sys.exit(1)
+
 def get_run_dir(spec: RunSpec) -> Path:
     """
     Generate a unique output directory for an experiment run.
@@ -175,12 +243,9 @@ def main():
         dataset_path = args.dataset
     else:
         data_dir = Path("data/datasets")
-        datasets = sorted(list(data_dir.glob("v*_unified")))
-        if not datasets:
-            print("No datasets found. Run scripts/build_db.py first.")
-            sys.exit(1)
-        dataset_path = str(datasets[-1])
-        print(f"Using latest dataset: {dataset_path}")
+        dataset_dir = _ensure_dataset_available(data_dir)
+        dataset_path = str(dataset_dir)
+        print(f"Using dataset: {dataset_path}")
 
     # 2. Parse JSON params
     try:
