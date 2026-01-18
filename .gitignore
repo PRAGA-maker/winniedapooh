@@ -12,4 +12,8 @@ data/outputs/
 kalshi_key.pem
 *.pem
 *.db
+/temporary/
+/tests/audit_outputs/
+/tests/e2e_outputs/
 /tests/parquet_quality_outputs/
+.pytest_cache/
