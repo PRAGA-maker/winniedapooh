@@ -24,7 +24,7 @@ Prerequisites: Python 3.13+, `uv` (package manager).
 | Step | Command | Description |
 |------|---------|-------------|
 | 1 | `uv sync` or `uv sync --all-groups` | Install dependencies. Use `--all-groups` to include dev dependencies (pytest, etc.). |
-| 2 | `cp .env.example .env` | Configure API keys (Kalshi/Metaculus). Skip if `.env.example` doesn't exist. |
+| 2 | `cp .env.example .env` | **Initial setup only**: Configure API keys (Kalshi/Metaculus). Skip if you already have a `.env` file or if `.env.example` is missing. |
 | 3 | `uv run scripts/build_db.py --start 2023-01-01 --end 2025-12-31` | Fetch data from Kalshi's public S3 bucket and build dataset. |
 | 4 | `uv run runner/runner.py --method mlp_nn` | Run a benchmarking experiment. |
 | 5 | `uv run scripts/inspect_parquet.py` | View summary statistics of the latest dataset. |
@@ -39,6 +39,12 @@ Prerequisites: Python 3.13+, `uv` (package manager).
 **Kalshi API enrichment tuning**:
 - Use `--kalshi-batch-size` with `scripts/build_db.py` to control the /markets batch size.
 - Example: `uv run scripts/build_db.py --start 2024-12-30 --end 2024-12-31 --kalshi-batch-size 70`
+
+**Environment Variables (`.env`)**:
+- `KALSHI_API_KEY_ID`: Your Kalshi API key UUID.
+- `KALSHI_PRIVATE_KEY_PATH`: Path to your `.pem` private key file (e.g., `kalshi_key.pem`).
+- `METACULUS_TOKEN_1`, `METACULUS_TOKEN_2`, ...: One or more Metaculus API tokens for rotation.
+- `METACULUS_TOKEN`: (Legacy/Single) Fallback Metaculus token.
 
 --------------------------------------------------------------------------------
 2. DATA SCHEMA
