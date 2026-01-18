@@ -293,6 +293,15 @@ def map_kalshi_candle_bid_ask(
 #     into a single event row keyed by `event_id`. Each option inside `options_json` 
 #     corresponds to one Kalshi market and includes its history lists. Binary events 
 #     synthesize a NO option by complementing the YES belief series.
-# 12. Experiment Note: Jan 2024 candlestick calls returned empty arrays, so bid/ask mapping
-#     cannot be validated on historical data yet.
+# 12. Experiment Note: Jan 2024 batch candlestick calls returned candles with yes_bid/yes_ask
+#     fields for S3-sampled tickers (2026-01-18). Bid/ask mapping is now validated for
+#     historical data via the batch endpoint.
+# 13. Candlestick Availability Limitation (2026-01-18): Investigation of Jan 2024 dataset revealed
+#     Kalshi's candlestick API does not return historical candles for many markets, even when those
+#     markets had trading volume. 10/10 sampled markets with volume but no bid/ask returned 0 candles.
+#     This is a data source limitation, not a mapping bug. The yes_bid/yes_ask extraction logic in
+#     map_kalshi_candle_bid_ask is correct and uses the right fallback order (close_dollars → 
+#     open_dollars → high_dollars → low_dollars), but the API simply does not provide candles for
+#     all historical dates. Current bid/ask coverage: ~81% of options, ~30% of points (Jan 2024).
+#     For critical bid/ask requirements, consider alternative sources like order book snapshots.
 

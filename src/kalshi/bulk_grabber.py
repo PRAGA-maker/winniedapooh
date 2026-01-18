@@ -139,9 +139,44 @@ class KalshiBulkGrabber:
                     # Use faster streaming and parsing
                     with requests.get(url, stream=True, timeout=60) as r:
                         if r.status_code == 200:
+                            content_length = r.headers.get("Content-Length")
+                            if content_length:
+                                try:
+                                    content_length = int(content_length)
+                                    if content_length > 500 * 1024 * 1024:
+                                        logger.warning(
+                                            f"  Large S3 file for {d}: {content_length / (1024**2):.1f} MB. "
+                                            "Scan may take several minutes."
+                                        )
+                                except ValueError:
+                                    content_length = None
+                            else:
+                                content_length = None
+
                             buffer = []
-                            for chunk in r.iter_content(chunk_size=1024*1024):
+                            bytes_read = 0
+                            last_log_time = time.time()
+                            last_log_bytes = 0
+                            log_interval_seconds = 30
+                            log_interval_bytes = 256 * 1024 * 1024
+
+                            for chunk in r.iter_content(chunk_size=2*1024*1024):
                                 if not chunk: continue
+                                bytes_read += len(chunk)
+                                now = time.time()
+                                if (now - last_log_time) >= log_interval_seconds or (bytes_read - last_log_bytes) >= log_interval_bytes:
+                                    if content_length:
+                                        pct = (bytes_read / content_length) * 100.0
+                                        logger.info(
+                                            f"  {d} scan progress: {bytes_read / (1024**2):.1f} MB "
+                                            f"({pct:.1f}%)"
+                                        )
+                                    else:
+                                        logger.info(
+                                            f"  {d} scan progress: {bytes_read / (1024**2):.1f} MB"
+                                        )
+                                    last_log_time = now
+                                    last_log_bytes = bytes_read
                                 chunk_str = chunk.decode('utf-8', errors='ignore')
                                 parts = chunk_str.split('},')
                                 
@@ -383,4 +418,7 @@ class KalshiBulkGrabber:
 #     Metadata is then enriched in batches of 100 via the `/markets?tickers=...` 
 #     API endpoint after discovering unique tickers from the S3 bulk files. 
 #     This provides a ~100x speedup over one-by-one enrichment.
+# 15. Large S3 Files (2026-01): Some daily bulk files can be 1.8-2.0GB. Add periodic
+#     scan progress logging (MB + percent) to avoid perceived hangs and to confirm
+#     steady streaming throughput during long scans.
 

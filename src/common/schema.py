@@ -37,8 +37,8 @@ class TimeSeriesPoint(BaseModel):
     ts: datetime
     belief_scalar: Optional[float] = None
     belief_json: Optional[str] = None
-    bid: Optional[float] = None
-    ask: Optional[float] = None
+    bid: Optional[float] = None  # Best buy price (Kalshi: from candlesticks, daily OHLC)
+    ask: Optional[float] = None  # Best sell price (Kalshi: from candlesticks, daily OHLC)
     volume: Optional[float] = None
     open_interest: Optional[float] = None
     raw_json: Optional[str] = None
@@ -52,4 +52,11 @@ class TimeSeriesPoint(BaseModel):
 # 1. Pydantic V2: All fields MUST have type annotations or they are ignored/error out.
 # 2. Enums: Use (str, Enum) for easy JSON serialization in parquet/pandas.
 # 3. Canonical Schema: Keeping it flat (except for JSON blobs) makes pandas/parquet much happier.
+# 4. Bid/Ask Coverage (2026-01-18): Investigation revealed ~18.8% of Kalshi options lack bid/ask:
+#    - 15.3%: Non-synthetic with 0 volume (expected - no trading activity)
+#    - 4.1%: Synthetic options (expected - no real orderbook exists)
+#    - 0.9%: Ultra-short-lived daily markets (Kalshi data retention limitation)
+#    Bid/ask are sourced from /markets/candlesticks (daily OHLC), not instantaneous orderbook
+#    snapshots. Historical orderbook data is not available via Kalshi API. This is acceptable
+#    for forecasting research (~81% option coverage, ~30% point coverage in Jan 2024).
 

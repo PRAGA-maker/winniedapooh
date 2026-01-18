@@ -126,7 +126,7 @@ def validate_data_types(df: pd.DataFrame) -> Dict[str, Any]:
     for col in json_fields:
         if col in df.columns:
             for idx, val in enumerate(df[col].head(20)):  # Check first 20
-                if val and not pd.isna(val):
+                if not pd.isna(val) and val:
                     try:
                         json.loads(val)
                     except json.JSONDecodeError:

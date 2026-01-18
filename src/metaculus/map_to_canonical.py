@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List
 from src.common.schema import TimeSeriesPoint, MarketType, MarketStatus
 
@@ -47,6 +47,7 @@ def map_metaculus_question(raw_post: Dict[str, Any], raw_q: Dict[str, Any]) -> D
     return {
         "source": "metaculus",
         "market_id": str(raw_q.get("id", "unknown")),
+        "event_id": str(raw_post.get("id", "")),
         "title": str(raw_q.get("title") or raw_post.get("title") or ""),
         "description": str(raw_q.get("description") or raw_post.get("description") or ""),
         "url": f"https://www.metaculus.com/questions/{raw_q.get('id', '')}",
@@ -65,7 +66,7 @@ def map_metaculus_history_point(q_id: str, point: Dict[str, Any]) -> TimeSeriesP
     # { "start_time": ..., "centers": [prob], ... }
     
     if "start_time" in point:
-        ts = datetime.fromtimestamp(point["start_time"])
+        ts = datetime.fromtimestamp(point["start_time"], tz=timezone.utc)
         centers = point.get("centers")
         if centers and isinstance(centers, list) and len(centers) > 0:
             belief_scalar = float(centers[0])
@@ -75,7 +76,7 @@ def map_metaculus_history_point(q_id: str, point: Dict[str, Any]) -> TimeSeriesP
             belief_json = json.dumps(point.get("forecast_values"))
     elif isinstance(point, list):
         # [timestamp, community_prediction, ...]
-        ts = datetime.fromtimestamp(point[0])
+        ts = datetime.fromtimestamp(point[0], tz=timezone.utc)
         belief_scalar = float(point[1])
         belief_json = None
     else:

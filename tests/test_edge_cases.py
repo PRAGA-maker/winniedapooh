@@ -3,6 +3,8 @@ Edge case testing for boundary conditions and error handling.
 """
 import pytest
 import sys
+import json
+import pandas as pd
 from pathlib import Path
 from datetime import date, timedelta
 import sqlite3
@@ -217,6 +219,73 @@ def test_batch_save_performance(tmp_path):
         assert history_count == 1000  # 100 markets * 10 points
 
 
+def test_zero_yes_resolution_synthetic_option(tmp_path):
+    """Zero-YES resolved events should gain a synthetic none option."""
+    db_path = tmp_path / "test.db"
+    store = CanonicalStore(db_path)
+
+    df = pd.DataFrame([
+        {
+            "source": "kalshi",
+            "market_id": "MKT-1",
+            "event_id": "EVT-1",
+            "title": "Option 1",
+            "description": "Test event",
+            "url": "https://kalshi.com/markets/evt/mkt-1",
+            "market_type": "binary",
+            "answer_options_json": json.dumps(["NO", "YES"]),
+            "end_time": "2024-12-30T00:00:00",
+            "status": "resolved",
+            "resolved_value_json": json.dumps("no"),
+            "created_time": "2024-12-01T00:00:00",
+            "metadata_json": json.dumps({}),
+            "ts": ["2024-12-10T00:00:00", "2024-12-11T00:00:00"],
+            "belief": [0.2, 0.3],
+            "bid": [None, None],
+            "ask": [None, None],
+            "volume": [None, None],
+            "open_interest": [None, None],
+        },
+        {
+            "source": "kalshi",
+            "market_id": "MKT-2",
+            "event_id": "EVT-1",
+            "title": "Option 2",
+            "description": "Test event",
+            "url": "https://kalshi.com/markets/evt/mkt-2",
+            "market_type": "binary",
+            "answer_options_json": json.dumps(["NO", "YES"]),
+            "end_time": "2024-12-30T00:00:00",
+            "status": "resolved",
+            "resolved_value_json": json.dumps("no"),
+            "created_time": "2024-12-01T00:00:00",
+            "metadata_json": json.dumps({}),
+            "ts": ["2024-12-10T00:00:00", "2024-12-11T00:00:00"],
+            "belief": [0.1, 0.2],
+            "bid": [None, None],
+            "ask": [None, None],
+            "volume": [None, None],
+            "open_interest": [None, None],
+        },
+    ])
+
+    aggregated = store._aggregate_events(df)
+    assert len(aggregated) == 1
+
+    row = aggregated.iloc[0]
+    assert row["status"] == "resolved"
+    assert json.loads(row["resolved_value_json"]) == "NONE_OF_ABOVE"
+
+    options = json.loads(row["options_json"])
+    synthetic = [opt for opt in options if opt.get("option_id") == "NONE_OF_ABOVE"]
+    assert len(synthetic) == 1
+    assert len(synthetic[0].get("belief") or []) > 0
+
+    metadata = json.loads(row["metadata_json"])
+    assert metadata.get("zero_yes_resolved") is True
+    assert metadata.get("raw_resolved_yes_count") == 0
+
+
 def test_exists_method(tmp_path):
     """Test the exists() method."""
     db_path = tmp_path / "test.db"
@@ -267,3 +336,7 @@ def test_get_existing_market_ids(tmp_path):
     # Get Metaculus IDs
     metaculus_ids = store.get_existing_market_ids("metaculus")
     assert set(metaculus_ids) == {"M1"}
+
+
+# --- LESSONS LEARNED ---
+# 1. Zero-YES resolved events should gain a synthetic option to stay evaluable.

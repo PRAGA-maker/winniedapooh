@@ -69,7 +69,10 @@ Stored inside `options_json` as per-option lists.
 | belief | float | The normalized probability or price (0-1). |
 | volume | float | Trading volume (Kalshi-specific). |
 | open_interest | float | Active contracts (Kalshi-specific). |
-| bid / ask | float | Best buy/sell prices (Kalshi-specific). |
+| bid / ask | float | Best buy/sell prices (Kalshi-specific). Optional, ~81% coverage. |
+
+**Note on bid/ask**: Sourced from `/markets/candlesticks` (daily OHLC). Null for: 
+synthetic options (no orderbook), zero-volume markets, ultra-short-lived daily markets.
 
 --------------------------------------------------------------------------------
 3. CORE CLASSES & MODULES

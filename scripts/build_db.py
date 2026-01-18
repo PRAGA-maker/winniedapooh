@@ -17,7 +17,8 @@ if __name__ == "__main__":
     parser.add_argument("--start", type=str, default=None, help="Kalshi bulk start date (YYYY-MM-DD)")
     parser.add_argument("--end", type=str, default=None, help="Kalshi bulk end date (YYYY-MM-DD)")
     parser.add_argument("--name", type=str, default=None, help="Custom name for this dataset build (isolates DB and output)")
-    parser.add_argument("--kalshi-bid-ask-backfill", action="store_true", help="Backfill Kalshi bid/ask from candlesticks")
+    parser.add_argument("--kalshi-bid-ask-backfill", action="store_true", help="Force Kalshi bid/ask backfill from candlesticks (use on full runs when auto-backfill is auto-skipped)")
+    parser.add_argument("--skip-kalshi", action="store_true", help="Skip Kalshi ingestion (Metaculus-only build)")
     args = parser.parse_args()
     
     start_date = date.fromisoformat(args.start) if args.start else None
@@ -31,6 +32,7 @@ if __name__ == "__main__":
         start_date=start_date,
         end_date=end_date,
         name=args.name,
-        kalshi_bid_ask_backfill=args.kalshi_bid_ask_backfill
+        kalshi_bid_ask_backfill=args.kalshi_bid_ask_backfill,
+        skip_kalshi=args.skip_kalshi
     )
 
