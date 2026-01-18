@@ -949,7 +949,10 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
                         aggs = q["aggregations"]
                         for agg_key in ["recency_weighted", "unweighted", "weighted"]:
                             if agg_key in aggs:
-                                points = aggs[agg_key].get("history", [])
+                                agg_block = aggs[agg_key]
+                                points = agg_block.get("history", [])
+                                if not points and agg_block.get("latest"):
+                                    points = [agg_block["latest"]]
                                 if points:
                                     break
                     
@@ -1159,5 +1162,7 @@ if __name__ == "__main__":
 # 30. Metaculus Resilience: If Metaculus fetch fails after retries, skip Metaculus and continue Kalshi-only export.
 # 31. Parquet Schema Consistency: Normalize tz-aware timestamps and force string dtypes per chunk
 #     before writing to avoid schema mismatches across partitions.
+# 32. Metaculus Latest Fallback: If aggregation history is empty, fall back to the latest
+#     snapshot so Metaculus markets are still represented in the unified dataset.
 # 31. Resolution Semantics: Event-level status should be "resolved" only when exactly one option resolves YES;
 #     otherwise set status based on open/closed signals and keep resolved_value_json null for auditability.
