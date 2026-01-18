@@ -14,12 +14,37 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from src.kalshi.grabber import KalshiGrabber
 from src.kalshi.bulk_grabber import KalshiBulkGrabber
-from src.kalshi.map_to_canonical import map_kalshi_market, map_kalshi_trade
+from src.kalshi.map_to_canonical import map_kalshi_market, map_kalshi_trade, build_kalshi_url
 from src.metaculus.grabber import MetaculusGrabber
 from src.metaculus.map_to_canonical import map_metaculus_question, map_metaculus_history_point
 from src.common.parquet import write_parquet_dataset
 from src.common.logging import logger
 from src.common.config import config
+
+def _map_s3_payout_type(payout_type: Optional[str]) -> str:
+    if not payout_type:
+        return "other"
+    lowered = payout_type.lower()
+    if "binary" in lowered:
+        return "binary"
+    if "scalar" in lowered:
+        return "numeric"
+    return "other"
+
+def _s3_answer_options(market_type: str) -> List[Any]:
+    if market_type == "binary":
+        return ["NO", "YES"]
+    if market_type == "numeric":
+        return [{"type": "scalar"}]
+    return []
+
+def _map_s3_status(raw_status: Optional[str]) -> str:
+    lowered = (raw_status or "unknown").lower()
+    if lowered in ["finalized", "determined", "settled"]:
+        return "resolved"
+    if lowered == "closed":
+        return "closed"
+    return "unknown"
 
 def process_kalshi_day(target_date: date, allowed_tickers: Optional[set] = None):
     """
@@ -43,17 +68,20 @@ def process_kalshi_day(target_date: date, allowed_tickers: Optional[set] = None)
 
             try:
                 ts_point = bulk_grabber.map_to_timeseries(raw_record)
+                payout_type = raw_record.get("payout_type")
+                market_type = _map_s3_payout_type(payout_type)
+                options = _s3_answer_options(market_type)
                 
                 m_record = {
                     "source": "kalshi",
                     "market_id": ticker,
                     "title": ticker,
                     "description": "Bulk-only record",
-                    "url": f"https://kalshi.com/markets/{ticker}",
-                    "market_type": "binary",
-                    "answer_options_json": json.dumps(["NO", "YES"]),
+                    "url": build_kalshi_url(ticker, raw_record.get("report_ticker")),
+                    "market_type": market_type,
+                    "answer_options_json": json.dumps(options),
                     "end_time": datetime.fromisoformat(raw_record["date"]).isoformat(),
-                    "status": "unknown",
+                    "status": _map_s3_status(raw_record.get("status")),
                     "metadata_json": json.dumps(raw_record)
                 }
 
@@ -73,9 +101,10 @@ def process_kalshi_day(target_date: date, allowed_tickers: Optional[set] = None)
 
 class CanonicalStore:
     """Handles persistent storage of canonical market records using SQLite to avoid memory bloat and allow resuming."""
-    def __init__(self, db_path: Optional[Path] = None):
+    def __init__(self, db_path: Optional[Path] = None, name: Optional[str] = None):
         if db_path is None:
-            self.db_path = config.clean_data_dir / "canonical.db"
+            db_name = f"canonical_{name}.db" if name else "canonical.db"
+            self.db_path = config.clean_data_dir / db_name
         else:
             self.db_path = db_path
             
@@ -152,6 +181,21 @@ class CanonicalStore:
             rows = conn.execute("SELECT market_id FROM markets WHERE source = ?", (source,)).fetchall()
             return [r[0] for r in rows]
 
+    def get_market_ids_needing_enrichment(self, source: str) -> List[str]:
+        """Return market_ids with fallback or missing metadata."""
+        with self._get_conn() as conn:
+            rows = conn.execute("""
+                SELECT market_id FROM markets
+                WHERE source = ?
+                  AND (
+                    title IS NULL OR title = '' OR title = market_id
+                    OR description IS NULL OR description = ''
+                    OR url IS NULL OR url = ''
+                    OR url NOT LIKE 'https://kalshi.com/markets/KX%'
+                  )
+            """, (source,)).fetchall()
+            return [r[0] for r in rows]
+
     def save(self, source: str, market_id: str, market_record: Dict[str, Any], timeseries: List[Dict[str, Any]]):
         self.save_batch(source, {market_id: market_record}, {market_id: timeseries})
 
@@ -188,6 +232,16 @@ class CanonicalStore:
             
             if history_rows:
                 conn.executemany(f"INSERT OR IGNORE INTO history ({', '.join(h_fields)}) VALUES ({h_placeholders})", history_rows)
+
+    def update_market_urls(self, source: str, url_updates: Dict[str, str]):
+        """Update URLs for existing markets without overwriting other fields."""
+        if not url_updates:
+            return
+        with self._get_conn() as conn:
+            conn.executemany(
+                "UPDATE markets SET url = ? WHERE source = ? AND market_id = ?",
+                [(url, source, market_id) for market_id, url in url_updates.items()]
+            )
 
     def add_history_points_batch(self, source: str, points_with_metadata: List[Dict[str, Any]]):
         """Append multiple history points in a single transaction."""
@@ -385,10 +439,10 @@ class CanonicalStore:
 
 def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, kalshi_ticker: Optional[str] = None, 
                           start_date: Optional[date] = None, end_date: Optional[date] = None,
-                          metaculus_limit: Optional[int] = None):
-    logger.info(f"Starting unified dataset build (limit={limit}, metaculus_limit={metaculus_limit})...")
+                          metaculus_limit: Optional[int] = None, name: Optional[str] = None):
+    logger.info(f"Starting unified dataset build (limit={limit}, metaculus_limit={metaculus_limit}, name={name})...")
     
-    store = CanonicalStore()
+    store = CanonicalStore(name=name)
     api_calls_count = 0
     batch_size = 17 # Kalshi rate limit is 20, we use 17 to stay safe
     
@@ -401,7 +455,6 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
     # 1. Kalshi Pipeline (Optimized)
     kalshi_grabber = KalshiGrabber()
     kalshi_bulk = KalshiBulkGrabber()
-    existing_statuses = store.get_existing_market_statuses("kalshi")
     
     if kalshi_ticker:
         # Single ticker mode (mostly for debugging)
@@ -431,32 +484,8 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
         
         logger.info(f"Filtering complete: {len(active_tickers)} active tickers identified.")
         
-        # STEP C: Filter missing metadata for active tickers
-        # OPTIMIZATION: Skip API enrichment for settled/closed markets since S3 already has the key info
-        # We only consider it "missing" if it's not in the DB OR if it only has minimal S3 metadata AND is still active
-        missing_tickers = []
-        for t in active_tickers:
-            # Check if we need rich metadata
-            if t not in existing_statuses:
-                # Not in DB at all, but check S3 status first
-                v_status = vitals_map[t].get("last_status", "unknown").lower()
-                if v_status in ["finalized", "determined", "settled", "closed"]:
-                    # Already settled in S3, skip API enrichment
-                    continue
-                missing_tickers.append(t)
-            elif existing_statuses[t] in ["unknown", "Bulk-only"]:
-                # In DB but with minimal metadata, check if worth enriching
-                v_status = vitals_map[t].get("last_status", "unknown").lower()
-                if v_status not in ["finalized", "determined", "settled", "closed"]:
-                    # Still active, enrich it
-                    missing_tickers.append(t)
-        
-        if limit: missing_tickers = missing_tickers[:limit]
-        
-        logger.info(f"Filtered to {len(missing_tickers)} tickers needing API enrichment (skipped {len(active_tickers) - len(missing_tickers)} settled markets).")
-        
-        # STEP D: Pre-populate with S3 Minimal Metadata (Zero API calls)
-        if missing_tickers or (len(active_tickers) - len(missing_tickers)) > 0:
+        # STEP C: Pre-populate with S3 Minimal Metadata (Zero API calls)
+        if active_tickers:
             # Pre-populate for ALL active tickers (both ones we'll enrich and ones we won't)
             all_to_populate = active_tickers if limit is None else active_tickers[:limit] if limit else active_tickers
             logger.info(f"Pre-populating DB with S3 metadata for {len(all_to_populate)} tickers...")
@@ -464,40 +493,59 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
             for t in all_to_populate:
                 v = vitals_map[t]
                 # Map S3 vitals to a basic MarketRecord
-                s3_status = v.get("last_status", "unknown").lower()
-                canonical_status = "resolved" if s3_status in ["finalized", "determined", "settled"] else "closed" if s3_status == "closed" else "unknown"
+                s3_status = v.get("last_status")
+                canonical_status = _map_s3_status(s3_status)
+                event_id = v.get("report_ticker")
+                payout_type = v.get("payout_type")
+                market_type = _map_s3_payout_type(payout_type)
+                options = _s3_answer_options(market_type)
                 
                 s3_metadata_batch[t] = {
                     "source": "kalshi",
                     "market_id": t,
-                    "event_id": v.get("report_ticker"),
+                    "event_id": event_id,
                     "title": t, # Fallback title
-                    "description": f"S3-sourced record (Max Vol: {v['max_vol']}, Max OI: {v['max_oi']})",
-                    "url": f"https://kalshi.com/markets/{t}",
-                    "market_type": "binary",
-                    "answer_options_json": json.dumps(["NO", "YES"]),
+                    "description": "",
+                    "url": build_kalshi_url(t, event_id),
+                    "market_type": market_type,
+                    "answer_options_json": json.dumps(options),
                     "end_time": v["last_date"], # Fallback
                     "status": canonical_status
                 }
             store.save_batch("kalshi", s3_metadata_batch, {})
-            
-            # STEP E: Targeted Rich Metadata Enrichment from API (Selective)
-            # Now we hit the API ONLY for active, missing tickers.
+
+            # STEP D: Targeted Rich Metadata Enrichment from API (Selective)
+            # Enrich any market still carrying fallback metadata.
+            needs_enrichment = set(store.get_market_ids_needing_enrichment("kalshi"))
+            missing_tickers = [t for t in active_tickers if t in needs_enrichment]
+            if limit:
+                missing_tickers = missing_tickers[:limit]
+
+            logger.info(f"Filtered to {len(missing_tickers)} tickers needing API enrichment.")
+
             if missing_tickers:
-                logger.info(f"Enriching with Rich Metadata for {len(missing_tickers)} active/open tickers...")
+                logger.info(f"Enriching with Rich Metadata for {len(missing_tickers)} Kalshi tickers...")
                 new_markets = kalshi_grabber.fetch_markets(tickers=missing_tickers)
                 api_metadata_batch = {}
+                found_tickers = set()
                 for m in new_markets:
                     try:
                         record = map_kalshi_market(m)
                         api_metadata_batch[m["ticker"]] = record.model_dump(mode='json')
-                    except Exception: continue
-                
+                        found_tickers.add(m["ticker"])
+                    except Exception:
+                        continue
+
                 if api_metadata_batch:
                     store.save_batch("kalshi", api_metadata_batch, {})
-                    logger.info(f"Saved rich metadata for {len(api_metadata_batch)} active Kalshi markets.")
+                    logger.info(f"Saved rich metadata for {len(api_metadata_batch)} Kalshi markets.")
+
+                missing_from_api = [t for t in missing_tickers if t not in found_tickers]
+                if missing_from_api:
+                    store.update_market_urls("kalshi", {t: "" for t in missing_from_api})
+                    logger.info(f"Marked {len(missing_from_api)} Kalshi markets with empty URLs (API missing).")
             else:
-                logger.info("No tickers need API enrichment (all are settled or already enriched).")
+                logger.info("No tickers need API enrichment (fallback metadata cleared).")
         
         # STEP F: History Ingestion
         current_date = start_date
@@ -688,7 +736,8 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
 
     # 4. Build Final Unified Dataset
     version = datetime.now().strftime("%Y%m%d_%H%M")
-    output_dir = config.datasets_dir / f"v{version}_unified"
+    dataset_suffix = f"_{name}_unified" if name else "_unified"
+    output_dir = config.datasets_dir / f"v{version}{dataset_suffix}"
     output_dir.mkdir(parents=True, exist_ok=True)
     
     store.load_and_write_partitioned(output_dir)
@@ -696,14 +745,14 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
     # Write manifest manually since we skipped write_parquet_dataset
     manifest = {
         "version": version,
-        "dataset_name": "unified",
+        "dataset_name": name if name else "unified",
         "created_at": datetime.now().isoformat(),
         "row_count": len(store.get_existing_market_ids("kalshi")) + len(store.get_existing_market_ids("metaculus"))
     }
     with open(output_dir / "manifest.json", "w") as f:
         json.dump(manifest, f, indent=2)
     
-    logger.info("Unified dataset build complete.")
+    logger.info(f"Unified dataset build complete: {output_dir}")
 
 def build_db_cli():
     import argparse
@@ -714,6 +763,7 @@ def build_db_cli():
     parser.add_argument("--kalshi-ticker", type=str, default=None)
     parser.add_argument("--start", type=str, default=None, help="Kalshi bulk start date (YYYY-MM-DD)")
     parser.add_argument("--end", type=str, default=None, help="Kalshi bulk end date (YYYY-MM-DD)")
+    parser.add_argument("--name", type=str, default=None, help="Custom name for this dataset build (isolates DB and output)")
     args = parser.parse_args()
     
     start_date = date.fromisoformat(args.start) if args.start else None
@@ -725,7 +775,8 @@ def build_db_cli():
         use_cache=args.use_cache, 
         kalshi_ticker=args.kalshi_ticker,
         start_date=start_date,
-        end_date=end_date
+        end_date=end_date,
+        name=args.name
     )
 
 if __name__ == "__main__":
@@ -797,6 +848,9 @@ if __name__ == "__main__":
 # 19. Memory Profile: Peak memory 214MB for 49K markets/89K records. Scales roughly linearly: 
 #     242MB for 75K markets/335K records. Main memory consumers: (1) Pandas DataFrames during 
 #     Parquet export (~100-150MB), (2) SQLite cache (2GB configured but only uses what's needed), 
+# 20. URL Quality: Prefer event-market URLs /markets/{event}/{market_id} for stable navigation.
+# 21. Metadata Completeness: Enrich markets that still have fallback titles or S3-only descriptions.
+# 22. Missing Markets: If API metadata is unavailable for a ticker, keep the record but clear url.
 #     (3) Worker processes (~20MB each × 22 = 440MB theoretical max, but shared memory reduces this).
 # 20. Edge Cases Handled: (1) Missing dates (404 from S3) → skip gracefully, (2) Empty date 
 #     ranges → return early, (3) All dates already processed → skip S3 scan entirely, (4) API 
@@ -829,3 +883,9 @@ if __name__ == "__main__":
 #     Developer experience excellent: new method in 5min, new task in 15min. Code quality review: 
 #     25% documentation coverage (identified for improvement), 0 bare except clauses (excellent), 
 #     clean architecture. No critical bugs found - pipeline is production-ready.
+# 26. S3 Fallback: Map payout_type when present and avoid defaulting all markets to binary options.
+# 27. Description Mapping: Kalshi API provides multiple description fields (subtitle, rules_primary, 
+#     rules_secondary). S3 pre-population sets description to empty string (no noisy placeholders). 
+#     API enrichment overwrites description with natural concatenation of available fields. Enrichment 
+#     query checks for empty descriptions to identify markets needing API metadata.
+# 28. History Gaps: S3 bulk files lack bid/ask and only provide daily snapshots, so null bid/ask and short history are expected for some markets.

@@ -125,7 +125,8 @@ class KalshiBulkGrabber:
                 first_date TEXT,
                 last_date TEXT,
                 last_status TEXT,
-                report_ticker TEXT
+                report_ticker TEXT,
+                payout_type TEXT
             )
         """)
         conn.commit()
@@ -189,20 +190,21 @@ class KalshiBulkGrabber:
                     for ticker, v in day_vitals.items():
                         rows.append((
                             ticker, v["max_vol"], v["max_oi"], v["first_date"], 
-                            v["last_date"], v["last_status"], v["report_ticker"]
+                            v["last_date"], v["last_status"], v["report_ticker"], v.get("payout_type")
                         ))
                     
                     # Optimized Upsert for SQLite 3.24+
                     conn.executemany("""
-                        INSERT INTO vitals (ticker, max_vol, max_oi, first_date, last_date, last_status, report_ticker)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO vitals (ticker, max_vol, max_oi, first_date, last_date, last_status, report_ticker, payout_type)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(ticker) DO UPDATE SET
                             max_vol = MAX(max_vol, excluded.max_vol),
                             max_oi = MAX(max_oi, excluded.max_oi),
                             first_date = MIN(first_date, excluded.first_date),
                             last_date = MAX(last_date, excluded.last_date),
                             last_status = CASE WHEN excluded.last_date >= last_date THEN excluded.last_status ELSE last_status END,
-                            report_ticker = COALESCE(report_ticker, excluded.report_ticker)
+                            report_ticker = COALESCE(report_ticker, excluded.report_ticker),
+                            payout_type = COALESCE(payout_type, excluded.payout_type)
                     """, rows)
                     conn.commit()
                 
@@ -228,7 +230,8 @@ class KalshiBulkGrabber:
                 "first_date": row[3],
                 "last_date": row[4],
                 "last_status": row[5],
-                "report_ticker": row[6]
+                "report_ticker": row[6],
+                "payout_type": row[7]
             }
         
         conn.close()
@@ -252,6 +255,7 @@ class KalshiBulkGrabber:
             vol = float(obj.get("daily_volume", 0) or 0)
             oi = float(obj.get("open_interest", 0) or 0)
             status = obj.get("status", "unknown")
+            payout_type = obj.get("payout_type")
             
             if ticker not in vitals_dict:
                 vitals_dict[ticker] = {
@@ -260,7 +264,8 @@ class KalshiBulkGrabber:
                     "first_date": d.isoformat(),
                     "last_date": d.isoformat(),
                     "last_status": status,
-                    "report_ticker": obj.get("report_ticker")
+                    "report_ticker": obj.get("report_ticker"),
+                    "payout_type": payout_type
                 }
             else:
                 v = vitals_dict[ticker]
@@ -268,6 +273,8 @@ class KalshiBulkGrabber:
                 v["max_oi"] = max(v["max_oi"], oi)
                 v["last_date"] = d.isoformat()
                 v["last_status"] = status
+                if not v.get("payout_type") and payout_type:
+                    v["payout_type"] = payout_type
         except:
             pass
 
@@ -367,4 +374,5 @@ class KalshiBulkGrabber:
 # 12. Status Field Values: S3 status can be "finalized", "determined", "settled", "closed", or 
 #     "unknown". Treat finalized/determined/settled as "resolved", closed as "closed", else "unknown".
 #     This status is critical for API call reduction logic.
+# 13. Payout Type: Capture payout_type from S3 vitals to avoid hardcoding binary markets.
 

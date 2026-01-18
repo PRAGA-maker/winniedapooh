@@ -16,6 +16,7 @@ if __name__ == "__main__":
     parser.add_argument("--kalshi-ticker", type=str, default=None)
     parser.add_argument("--start", type=str, default=None, help="Kalshi bulk start date (YYYY-MM-DD)")
     parser.add_argument("--end", type=str, default=None, help="Kalshi bulk end date (YYYY-MM-DD)")
+    parser.add_argument("--name", type=str, default=None, help="Custom name for this dataset build (isolates DB and output)")
     args = parser.parse_args()
     
     start_date = date.fromisoformat(args.start) if args.start else None
@@ -27,6 +28,7 @@ if __name__ == "__main__":
         use_cache=args.use_cache, 
         kalshi_ticker=args.kalshi_ticker,
         start_date=start_date,
-        end_date=end_date
+        end_date=end_date,
+        name=args.name
     )
 
