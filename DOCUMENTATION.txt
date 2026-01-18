@@ -28,7 +28,7 @@ Prerequisites: Python 3.13+, `uv` (package manager).
 | 3 | `uv run scripts/build_db.py --start 2023-01-01 --end 2025-12-31` | Fetch data from Kalshi's public S3 bucket and build dataset. |
 | 4 | `uv run runner/runner.py --method mlp_nn` | Run a benchmarking experiment. |
 | 5 | `uv run scripts/inspect_parquet.py` | View summary statistics of the latest dataset. |
-| 6 | `uv run python tests/parquet_quality.py` | Run a quality audit on the latest parquet dataset. |
+| 6 | `uv run python tests/parquet_quality.py --parquet data/datasets/<folder>/data.parquet` | Run comprehensive data quality audit (validates 15 requirements, ~2-3 min). |
 
 **Troubleshooting `uv sync`**:
 - If `uv: command not found`: Install `uv` using the commands above
