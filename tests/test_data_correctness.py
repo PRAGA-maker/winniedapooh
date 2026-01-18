@@ -4,6 +4,7 @@ Core data integrity tests for the optimized pipeline.
 import pytest
 import pandas as pd
 import numpy as np
+import json
 from pathlib import Path
 import sys
 
@@ -28,7 +29,7 @@ def test_schema_validation(latest_parquet_df):
     df = latest_parquet_df
     
     # Check required columns exist
-    required_cols = ['source', 'market_id', 'title', 'description', 'status', 'market_type']
+    required_cols = ['source', 'event_id', 'title', 'description', 'status', 'market_type', 'options_json']
     for col in required_cols:
         assert col in df.columns, f"Missing required column: {col}"
     
@@ -65,37 +66,40 @@ def test_basic_statistics(latest_parquet_df):
     # Should have both Kalshi data (Metaculus might be 0 if limit=0)
     sources = df['source'].value_counts().to_dict()
     assert 'kalshi' in sources, "No Kalshi data found"
-    print(f"  Kalshi markets: {sources.get('kalshi', 0)}")
-    print(f"  Metaculus markets: {sources.get('metaculus', 0)}")
+    print(f"  Kalshi events: {sources.get('kalshi', 0)}")
+    print(f"  Metaculus events: {sources.get('metaculus', 0)}")
 
 
 def test_belief_lists_structure(latest_parquet_df):
     """Test that belief lists have proper structure."""
     df = latest_parquet_df
     
-    if 'belief' not in df.columns or 'ts' not in df.columns:
-        pytest.skip("Belief or ts column not found")
-    
-    # Check first 100 rows for structure
+    if 'options_json' not in df.columns:
+        pytest.skip("options_json column not found")
+
     issues = []
     for idx in range(min(100, len(df))):
         row = df.iloc[idx]
-        
-        if row['belief'] is None or row['ts'] is None:
+        raw_options = row.get("options_json")
+        if not raw_options:
             continue
-        
-        # Check they're lists
-        if not isinstance(row['belief'], (list, np.ndarray)):
-            issues.append(f"Row {idx}: belief is not a list (type: {type(row['belief'])})")
+        try:
+            options = json.loads(raw_options)
+        except json.JSONDecodeError:
+            issues.append(f"Row {idx}: options_json is invalid JSON")
             continue
-        
-        if not isinstance(row['ts'], (list, np.ndarray)):
-            issues.append(f"Row {idx}: ts is not a list (type: {type(row['ts'])})")
-            continue
-        
-        # Check same length
-        if len(row['belief']) != len(row['ts']):
-            issues.append(f"Row {idx}: belief/ts length mismatch ({len(row['belief'])} vs {len(row['ts'])})")
+        for option in options:
+            ts_list = option.get("ts") or []
+            belief_list = option.get("belief") or []
+            if not isinstance(ts_list, (list, np.ndarray)):
+                issues.append(f"Row {idx}: option ts is not a list")
+                break
+            if not isinstance(belief_list, (list, np.ndarray)):
+                issues.append(f"Row {idx}: option belief is not a list")
+                break
+            if len(ts_list) != len(belief_list):
+                issues.append(f"Row {idx}: option ts/belief length mismatch")
+                break
     
     if issues:
         print("\nStructure issues found:")
@@ -120,7 +124,7 @@ def test_random_sampling(latest_parquet_df):
     if result['failures']:
         print(f"\nFirst 5 failures:")
         for failure in result['failures'][:5]:
-            print(f"  - {failure['market_id']} ({failure['source']}): {failure['issues']}")
+            print(f"  - {failure.get('event_id')} ({failure['source']}): {failure['issues']}")
     
     # Should have at least 90% pass rate
     assert result['pass_rate'] >= 0.90, f"Pass rate too low: {result['pass_rate']:.2%}"
@@ -151,44 +155,60 @@ def test_no_empty_belief_lists(latest_parquet_df):
     """Test that markets have non-empty belief lists."""
     df = latest_parquet_df
     
-    if 'belief' not in df.columns:
-        pytest.skip("Belief column not found")
-    
-    df['belief_len'] = df['belief'].apply(lambda x: len(x) if x is not None else 0)
-    empty_count = (df['belief_len'] == 0).sum()
+    if 'options_json' not in df.columns:
+        pytest.skip("options_json column not found")
+
+    def has_empty_option(raw):
+        if not raw:
+            return True
+        try:
+            options = json.loads(raw)
+        except json.JSONDecodeError:
+            return True
+        return any(len(option.get("belief") or []) == 0 for option in options)
+
+    df['has_empty_option'] = df['options_json'].apply(has_empty_option)
+    empty_count = df['has_empty_option'].sum()
     total_count = len(df)
-    
-    print(f"\nBelief List Statistics:")
-    print(f"  Total markets: {total_count}")
-    print(f"  Markets with empty belief: {empty_count}")
+
+    print(f"\nOption Belief Statistics:")
+    print(f"  Total events: {total_count}")
+    print(f"  Events with empty option belief: {empty_count}")
     print(f"  Non-empty ratio: {1 - empty_count/total_count:.2%}")
-    
-    # Most markets should have history (allow up to 10% to be empty)
-    assert empty_count / total_count < 0.10, f"Too many empty belief lists: {empty_count}/{total_count}"
+
+    assert empty_count / total_count < 0.10, f"Too many events with empty option belief: {empty_count}/{total_count}"
 
 
 def test_timestamp_ordering(latest_parquet_df):
     """Test that timestamps in history are sorted."""
     df = latest_parquet_df
     
-    if 'ts' not in df.columns:
-        pytest.skip("ts column not found")
+    if 'options_json' not in df.columns:
+        pytest.skip("options_json column not found")
     
     unsorted_count = 0
     checked_count = 0
     
     for idx in range(min(100, len(df))):
         row = df.iloc[idx]
-        if row['ts'] is None or len(row['ts']) <= 1:
+        raw_options = row.get("options_json")
+        if not raw_options:
             continue
-        
-        checked_count += 1
-        ts_list = row['ts']
-        
-        # Check if sorted
-        is_sorted = all(ts_list[i] <= ts_list[i+1] for i in range(len(ts_list)-1))
-        if not is_sorted:
-            unsorted_count += 1
+        try:
+            options = json.loads(raw_options)
+        except json.JSONDecodeError:
+            continue
+        for option in options:
+            ts_list = option.get("ts") or []
+            if len(ts_list) <= 1:
+                continue
+            checked_count += 1
+            cleaned = [ts for ts in ts_list if ts is not None]
+            if len(cleaned) <= 1:
+                continue
+            is_sorted = all(cleaned[i] <= cleaned[i+1] for i in range(len(cleaned)-1))
+            if not is_sorted:
+                unsorted_count += 1
     
     print(f"\nTimestamp Ordering:")
     print(f"  Markets checked: {checked_count}")
@@ -230,6 +250,6 @@ def test_market_type_distribution(latest_parquet_df):
         print(f"  {mtype}: {count} ({count/len(df):.1%})")
     
     # Should have valid market types
-    valid_types = {'binary', 'multiple_choice', 'numeric', 'other'}
+    valid_types = {'event'}
     invalid = set(type_counts.keys()) - valid_types
     assert len(invalid) == 0, f"Invalid market_type values found: {invalid}"

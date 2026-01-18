@@ -5,7 +5,7 @@ This document outlines the core principles and interaction patterns for developi
 ## Core Interaction Principles
 
 - **MUST READ: Science Mindset**: In this repo, success will often rely on a scientific mindset -- know your assumptions, hypothesis, goal, and tests then iterate till you reach your goal while learning about the problem space via experimentation and exploration.
-- **Notes over .md files**: Do not create new documentation files for specific modules or experiments. Instead, write notes; "lessons learned," or dos/donts at the bottom of the relevant Python script in the same syntax as currently implemented.  
+- **EXTRMELY IMPORTANT: Notes >> .md files**: Do not create new documentation files for specific modules or experiments. Instead, write notes; "lessons learned," or dos/donts at the bottom of the relevant Python script in the same syntax as currently implemented. Add this as your first to-do to read relevant context and last to-do for later always.
 - **Maintain `DOCUMENTATION.txt`**: This is the single source of truth for the repository's architecture and usage. If you add a new feature, task, or forecasting method, you MUST update `DOCUMENTATION.txt`.
 - **Schema is Sacred**: Always ensure data remains consistent with the canonical schema defined in `src/common/schema.py`. Use Pydantic models for validation during ingestion and processing.
 - **Testing Hygiene**: When testing logic or investigating data, prefer creating a temporary `.py` file (e.g., `temp_investigate.py`) rather than running long command chains or complex code directly in the terminal.

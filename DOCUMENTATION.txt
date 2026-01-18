@@ -28,12 +28,20 @@ Prerequisites: Python 3.13+, `uv` (package manager).
 | 3 | `uv run scripts/build_db.py --start 2023-01-01 --end 2025-12-31` | Fetch data from Kalshi's public S3 bucket and build dataset. |
 | 4 | `uv run runner/runner.py --method mlp_nn` | Run a benchmarking experiment. |
 | 5 | `uv run scripts/inspect_parquet.py` | View summary statistics of the latest dataset. |
+| 6 | `uv run python tests/parquet_quality.py` | Run a quality audit on the latest parquet dataset. |
 
 **Troubleshooting `uv sync`**:
 - If `uv: command not found`: Install `uv` using the commands above
 - If sync fails: Try `uv sync --all-groups` (includes dev dependencies)
 - Alternative: `uv pip install -e .` (if `uv sync` doesn't work)
 - Ensure `uv.lock` file exists and is up to date
+
+**Metaculus API note**:
+- Metaculus endpoints are rate-limited and can fail after retries. If you only need Kalshi
+  for a build, set `--metaculus-limit 0` to skip Metaculus collection and still produce
+  a valid unified dataset.
+- If Metaculus requests fail after retries during a build, the pipeline logs a warning and
+  automatically skips Metaculus while continuing with Kalshi-only export.
 
 --------------------------------------------------------------------------------
 2. DATA SCHEMA
@@ -42,7 +50,7 @@ Prerequisites: Python 3.13+, `uv` (package manager).
 The pipeline normalizes data into two primary structures, stored in a unified 
 Parquet format.
 
-A. MarketRecord (The "Static" Info)
+A. EventRecord (The "Static" Info)
 Defined in `src/common/schema.py`.
 
 *Optimization Note*: The pipeline uses Kalshi's **public S3 bucket** (`kalshi-public-docs.s3.amazonaws.com/reporting`) 
@@ -53,39 +61,39 @@ API endpoint after discovering unique tickers from the S3 bulk files. This provi
 | Field | Type | Description |
 |-------|------|-------------|
 | source| str | "kalshi" or "metaculus" |
-|market_id| str| Unique ID within the source. |
-| title  | str | Question/Market name. |
-| description | str | Full context of the question. |
+|event_id| str| Unique event ID within the source. |
+| title  | str | Event name. |
+| description | str | Full context of the event. |
 | url | str | Link to the original platform. |
-| market_type | Enum | binary, multiple_choice, numeric, or other. |
-| answer_options_json| str (JSON) | List of possible answers/choices. |
-| end_time | datetime | When the market closes. |
+| market_type | Enum | event. |
+| options_json| str (JSON) | List of option objects (one per market/answer). |
+| end_time | datetime | When the event closes (max over options). |
 | status | Enum | open, closed, resolved, or unknown. |
-| resolved_value_json| str (JSON) | The outcome (e.g., "1.0", "yes", or list). |
-| metadata_json | str (JSON) | Source-specific raw metadata. |
+| resolved_value_json| str (JSON) | Resolved option_id if uniquely resolved. |
+| metadata_json | str (JSON) | Event-level metadata (derived). |
 
 Kalshi normalization notes:
-- `market_type` maps from Kalshi `market_type` (binary -> binary, scalar -> numeric).
-- `answer_options_json` for scalar markets stores a JSON list with scalar metadata (strike type, bounds, tick size).
-- `resolved_value_json` is normalized to "yes"/"no" for binary and a numeric value for scalar when available.
-- `description` is built from API metadata fields: prefers `subtitle`, then concatenates `rules_primary` and `rules_secondary` if present, otherwise falls back to `title` or empty string. S3 bulk records lack description fields, so API enrichment populates proper descriptions for all markets.
+- Market-level metadata is still collected during ingestion, but the final dataset is event-level.
+- `options_json` contains each option's title, market_id, and history lists.
+- `resolved_value_json` on options is normalized to "yes"/"no" for binary and numeric value for scalar when available.
+- `status="resolved"` does not imply a unique YES option. For threshold/ladder markets, multiple YES or zero YES outcomes are possible.
+- The resolution task treats multi-YES as a uniform distribution across resolved options and skips zero-YES cases.
+- `description` is built from API metadata fields: prefers `subtitle`, then concatenates `rules_primary` and `rules_secondary` if present, otherwise falls back to `title` or empty string.
+- **Scalar/Numeric Markets**: While Kalshi docs mention a `scalar` market type, an exhaustive scan of the API and S3 bulk data (as of early 2025) found 0% scalar markets. The pipeline currently maps `payout_type` from S3 and `market_type` from API to `numeric` for scalars, but in practice, 100% of data is binary. If scalars are introduced later, they will likely require non-S3 discovery/history paths.
 
-B. TimeSeriesPoint (The "Belief" History)
-Stored in the same Parquet table as nested/exploded rows for history.
+B. Option TimeSeries (The "Belief" History)
+Stored inside `options_json` as per-option lists.
 
 Kalshi grouping note:
 - Kalshi UI "answer options" (e.g., temperature ranges) are represented as separate binary markets.
-- In the dataset, these appear as multiple rows that share the same `event_id`.
-- To reconstruct the UI-style multi-answer market, group Kalshi rows by `event_id` and treat each row as one option.
-- Current tasks and evaluation operate at the single-row (market_id) level and do not
-  consume grouped event-level examples. Split logic is also based on `market_id`, so
-  a single Kalshi event can span train/test/bench unless a grouped split is introduced.
+- In the dataset, these are already aggregated into a single event row keyed by `event_id`.
+- Each option inside `options_json` corresponds to one Kalshi market and includes its history lists.
+- Binary events synthesize a NO option by complementing the YES belief series.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| ts | datetime | Timestamp of the prediction/trade. |
-| belief_scalar | float | The normalized probability or price (0-1). |
-| belief_json | str (JSON) | Non-scalar beliefs (e.g., distributions). |
+| ts | datetime (ISO string) | Timestamp of the prediction/trade. |
+| belief | float | The normalized probability or price (0-1). |
 | volume | float | Trading volume (Kalshi-specific). |
 | open_interest | float | Active contracts (Kalshi-specific). |
 | bid / ask | float | Best buy/sell prices (Kalshi-specific). |
@@ -95,18 +103,15 @@ Kalshi grouping note:
 --------------------------------------------------------------------------------
 
 A. Data Handling (`dataobject/`)
-- `MarketDataset`: Entry point for loading `.parquet` data.
-- `MarketRecordWrapper`: Helper to access row data with validation.
-- `SplitManager`: Handles reproducible Train/Test/Bench splits via hashing.
+- `EventDataset`: Entry point for loading `.parquet` data.
+- `EventRecordWrapper`: Helper to access row data with validation.
+- `SplitManager`: Handles reproducible Train/Test/Bench splits via hashing on `event_id`.
 
 B. Task Definitions (`dataobject/tasks/`)
 - `Task`: Abstract base class for defining prediction problems.
-- `ResolveBinary`: Standard binary classification task (predict the final result).
-- `Example`: A single data point (features + history + target).
+- `ResolveEvent`: Multiclass resolution task over event options.
+- `Example`: A single data point (features + option histories + target distribution).
 - `Batch`: A collection of `Example` objects.
-Note: The task interface accepts a single `MarketRecord` at a time. Event-level or
-multi-answer tasks require explicit grouping (e.g., by `event_id`) before example
-creation, plus metrics that handle multi-class distributions.
 
 C. Forecasting Methods (`methods/`)
 - `ForecastMethod`: Base class for all models/baselines. Supports `.fit()`, `.predict()`, `.save()`, `.load()`.
@@ -117,7 +122,7 @@ C. Forecasting Methods (`methods/`)
 D. Experiment Workflow (`runner/`)
 - `RunSpec`: Serializable configuration for an experiment run.
 - `runner.py`: The primary CLI for orchestrating data loading, training, and evaluation.
-- `evaluator.py`: Computes metrics (Brier, LogLoss, etc.) per task.
+- `evaluator.py`: Computes metrics (multiclass Brier, LogLoss, etc.) per task.
 
 --------------------------------------------------------------------------------
 4. HOW TO BUILD OFF THIS REPO (Best Practices)
@@ -128,7 +133,7 @@ A. Adding a New Forecasting Method
 2. **Subclass**: Inherit from `ForecastMethod`.
 3. **Implement**:
    - `.fit(train_batches, spec)`: Logic to train your model.
-   - `.predict(batch, spec)`: Return a list of predictions (0-1).
+   - `.predict(batch, spec)`: Return a list of per-option probability distributions.
    - `.save(path)` / `.load(path)`: (Optional) Handle persistence.
 4. **Register**: Add your class to `METHODS` in `methods/registry.py`.
 
@@ -136,7 +141,7 @@ B. Adding a New Task
 1. **Create**: New file in `dataobject/tasks/` (e.g., `dataobject/tasks/my_task.py`).
 2. **Subclass**: Inherit from `Task`.
 3. **Implement**:
-   - `.make_examples(record, rng)`: Define how to turn a `MarketRecord` into `Example` objects.
+   - `.make_examples(record, rng)`: Define how to turn an `EventRecord` into `Example` objects.
    - `.metric_fns()`: Return a dict of `{name: sklearn_metric_fn}`.
 4. **Register**: Add it to `TASK_REGISTRY` in `runner/runner.py`.
 

@@ -1,0 +1,91 @@
+Rows: 0
+Columns: ['source', 'event_id', 'title', 'description', 'url', 'market_type', 'options_json', 'end_time', 'status', 'resolved_value_json', 'created_time', 'metadata_json']
+Source filter: metaculus
+
+== Column: source ==
+Basic: {'dtype': 'object', 'null_count': 0, 'null_pct': nan}
+String: {'empty_count': 0, 'whitespace_only_count': 0, 'min_len': None, 'max_len': None, 'mean_len': None}
+Top values: {}
+
+== Column: event_id ==
+Basic: {'dtype': 'object', 'null_count': 0, 'null_pct': nan}
+String: {'empty_count': 0, 'whitespace_only_count': 0, 'min_len': None, 'max_len': None, 'mean_len': None}
+Unique: 0
+
+== Column: title ==
+Basic: {'dtype': 'object', 'null_count': 0, 'null_pct': nan}
+String: {'empty_count': 0, 'whitespace_only_count': 0, 'min_len': None, 'max_len': None, 'mean_len': None}
+
+== Column: description ==
+Basic: {'dtype': 'object', 'null_count': 0, 'null_pct': nan}
+String: {'empty_count': 0, 'whitespace_only_count': 0, 'min_len': None, 'max_len': None, 'mean_len': None}
+
+== Column: url ==
+Basic: {'dtype': 'object', 'null_count': 0, 'null_pct': nan}
+String: {'empty_count': 0, 'whitespace_only_count': 0, 'min_len': None, 'max_len': None, 'mean_len': None}
+
+== Column: market_type ==
+Basic: {'dtype': 'object', 'null_count': 0, 'null_pct': nan}
+String: {'empty_count': 0, 'whitespace_only_count': 0, 'min_len': None, 'max_len': None, 'mean_len': None}
+Top values: {}
+
+== Column: options_json ==
+Basic: {'dtype': 'object', 'null_count': 0, 'null_pct': nan}
+String: {'empty_count': 0, 'whitespace_only_count': 0, 'min_len': None, 'max_len': None, 'mean_len': None}
+JSON: {'sampled': False, 'sample_size': 0, 'type_counts': {}, 'parse_errors': {}, 'example_values': []}
+
+== Column: end_time ==
+Basic: {'dtype': 'datetime64[ns, UTC]', 'null_count': 0, 'null_pct': nan}
+Datetime: {'min': None, 'max': None, 'time_midnight_ratio': None, 'unique_dates': 0}
+
+== Column: status ==
+Basic: {'dtype': 'object', 'null_count': 0, 'null_pct': nan}
+String: {'empty_count': 0, 'whitespace_only_count': 0, 'min_len': None, 'max_len': None, 'mean_len': None}
+Top values: {}
+
+== Column: resolved_value_json ==
+Basic: {'dtype': 'object', 'null_count': 0, 'null_pct': nan}
+String: {'empty_count': 0, 'whitespace_only_count': 0, 'min_len': None, 'max_len': None, 'mean_len': None}
+JSON: {'sampled': False, 'sample_size': 0, 'type_counts': {}, 'parse_errors': {}, 'example_values': []}
+
+== Column: created_time ==
+Basic: {'dtype': 'datetime64[ns, UTC]', 'null_count': 0, 'null_pct': nan}
+Datetime: {'min': None, 'max': None, 'time_midnight_ratio': None, 'unique_dates': 0}
+
+== Column: metadata_json ==
+Basic: {'dtype': 'object', 'null_count': 0, 'null_pct': nan}
+String: {'empty_count': 0, 'whitespace_only_count': 0, 'min_len': None, 'max_len': None, 'mean_len': None}
+JSON: {'sampled': False, 'sample_size': 0, 'type_counts': {}, 'parse_errors': {}, 'example_values': []}
+
+== Cross-column checks ==
+{
+  "options_json_stats": {
+    "sample_rows": 0,
+    "parse_errors": {},
+    "options_count_stats": {
+      "min": null,
+      "max": null,
+      "mean": null
+    },
+    "options_ts_belief_length_mismatch": 0,
+    "options_ts_bid_length_mismatch": 0,
+    "options_ts_ask_length_mismatch": 0
+  },
+  "resolved_without_value": 0,
+  "resolved_status_empty_value": 0,
+  "resolved_status_nonempty_value": 0,
+  "has_value_without_resolved_status": 0,
+  "created_after_end": 0
+}
+
+== Validation ==
+{
+  "source_filter": "metaculus",
+  "errors": [
+    "source_missing=metaculus"
+  ],
+  "warnings": [
+    "missing_sources=['metaculus']"
+  ],
+  "source_counts": {}
+}

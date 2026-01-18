@@ -26,6 +26,17 @@ def run_tests():
     print(result.stdout)
     if result.stderr:
         print(result.stderr)
+
+    # Run parquet quality audit for reusable report output
+    audit_result = subprocess.run(
+        ["uv", "run", "python", "tests/parquet_quality.py", "--output", "tests/parquet_quality_outputs"],
+        capture_output=True,
+        text=True
+    )
+    if audit_result.stdout:
+        print(audit_result.stdout)
+    if audit_result.stderr:
+        print(audit_result.stderr)
     
     # Parse results
     if "passed" in result.stdout:

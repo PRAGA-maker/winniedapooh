@@ -3,23 +3,23 @@ import json
 import pandas as pd
 from typing import Optional
 from pathlib import Path
-from dataobject.dataset import MarketDataset, DatasetView
+from dataobject.dataset import EventDataset, DatasetView
 
 class SplitManager:
-    def __init__(self, dataset: MarketDataset, splits_df: pd.DataFrame):
+    def __init__(self, dataset: EventDataset, splits_df: pd.DataFrame):
         self.dataset = dataset
         self.splits_df = splits_df
 
     @classmethod
-    def build(cls, dataset: MarketDataset, seed: int = 42) -> "SplitManager":
-        """Build deterministic splits based on market_id hash."""
+    def build(cls, dataset: EventDataset, seed: int = 42) -> "SplitManager":
+        """Build deterministic splits based on event_id hash."""
         records = []
         for _, row in dataset.df.iterrows():
-            m_id = row["market_id"]
+            e_id = row.get("event_id") or row.get("market_id")
             source = row["source"]
             
             # Deterministic hash
-            hash_input = f"{m_id}:{source}:{seed}".encode()
+            hash_input = f"{e_id}:{source}:{seed}".encode()
             h = hashlib.sha256(hash_input).hexdigest()
             h_int = int(h, 16)
             
@@ -39,7 +39,7 @@ class SplitManager:
                     split = "bench"
                     
             records.append({
-                "market_id": m_id,
+                "event_id": e_id,
                 "source": source,
                 "split": split
             })
@@ -51,8 +51,8 @@ class SplitManager:
         split_ids = self.splits_df[self.splits_df["split"] == split_name]
         merged = pd.merge(
             self.dataset.df, 
-            split_ids[["market_id", "source"]], 
-            on=["market_id", "source"]
+            split_ids[["event_id", "source"]], 
+            on=["event_id", "source"]
         )
         return DatasetView(merged)
 
@@ -60,12 +60,12 @@ class SplitManager:
         self.splits_df.to_parquet(path / "splits.parquet", index=False)
         
     @classmethod
-    def load(cls, dataset: MarketDataset, path: Path) -> "SplitManager":
+    def load(cls, dataset: EventDataset, path: Path) -> "SplitManager":
         splits_df = pd.read_parquet(path / "splits.parquet")
         return cls(dataset, splits_df)
 
 # --- LESSONS LEARNED ---
-# 1. Deterministic Splitting: Using SHA256 hash of market_id + seed is much 
+# 1. Deterministic Splitting: Using SHA256 hash of event_id + seed is much 
 #    more stable than random sampling for forecasting datasets.
 # 2. Split Logic: Metaculus is almost always OOD (bench/test), while Kalshi 
 #    is the primary source for training.

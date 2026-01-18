@@ -1,10 +1,10 @@
 import json
 from datetime import datetime
 from typing import Dict, Any, List
-from src.common.schema import MarketRecord, TimeSeriesPoint, MarketType, MarketStatus
+from src.common.schema import TimeSeriesPoint, MarketType, MarketStatus
 
-def map_metaculus_question(raw_post: Dict[str, Any], raw_q: Dict[str, Any]) -> MarketRecord:
-    """Map raw Metaculus post/question JSON to canonical MarketRecord."""
+def map_metaculus_question(raw_post: Dict[str, Any], raw_q: Dict[str, Any]) -> Dict[str, Any]:
+    """Map raw Metaculus post/question JSON to canonical market record dict."""
     if not raw_q:
         raise ValueError("raw_q cannot be None")
         
@@ -44,20 +44,20 @@ def map_metaculus_question(raw_post: Dict[str, Any], raw_q: Dict[str, Any]) -> M
     else:
         end_time = datetime.now()
 
-    return MarketRecord(
-        source="metaculus",
-        market_id=str(raw_q.get("id", "unknown")),
-        title=str(raw_q.get("title") or raw_post.get("title") or ""),
-        description=str(raw_q.get("description") or raw_post.get("description") or ""),
-        url=f"https://www.metaculus.com/questions/{raw_q.get('id', '')}",
-        market_type=market_type,
-        answer_options_json=json.dumps(options),
-        end_time=end_time,
-        status=status,
-        resolved_value_json=json.dumps(raw_q.get("resolution")) if raw_q.get("resolution") is not None else None,
-        created_time=datetime.fromisoformat(str(raw_q["created_at"]).replace("Z", "+00:00")) if raw_q.get("created_at") else None,
-        metadata_json=json.dumps({"post": raw_post, "question": raw_q})
-    )
+    return {
+        "source": "metaculus",
+        "market_id": str(raw_q.get("id", "unknown")),
+        "title": str(raw_q.get("title") or raw_post.get("title") or ""),
+        "description": str(raw_q.get("description") or raw_post.get("description") or ""),
+        "url": f"https://www.metaculus.com/questions/{raw_q.get('id', '')}",
+        "market_type": market_type,
+        "answer_options_json": json.dumps(options),
+        "end_time": end_time,
+        "status": status,
+        "resolved_value_json": json.dumps(raw_q.get("resolution")) if raw_q.get("resolution") is not None else None,
+        "created_time": datetime.fromisoformat(str(raw_q["created_at"]).replace("Z", "+00:00")) if raw_q.get("created_at") else None,
+        "metadata_json": json.dumps({"post": raw_post, "question": raw_q})
+    }
 
 def map_metaculus_history_point(q_id: str, point: Dict[str, Any]) -> TimeSeriesPoint:
     """Map raw Metaculus history point to canonical TimeSeriesPoint."""

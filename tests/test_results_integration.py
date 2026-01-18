@@ -53,7 +53,7 @@ def test_results_system_integration(tmp_path):
             ["uv", "run", "runner/runner.py",
              "--name", name,
              "--method", method,
-             "--task", "resolve_binary",
+            "--task", "resolve_event",
              "--dataset", dataset_path],
             capture_output=True,
             text=True
@@ -70,7 +70,7 @@ def test_results_system_integration(tmp_path):
     assert len(runs) > 0, "list_runs should return runs"
     
     # Test method comparison
-    comparison = db.get_methods_comparison(task="resolve_binary", latest_only=True)
+    comparison = db.get_methods_comparison(task="resolve_event", latest_only=True)
     assert len(comparison) >= 2, "Should have runs for both methods"
     
     # Verify performance ordering (last_price should beat random)
@@ -95,7 +95,7 @@ def test_cli_tools_work():
     
     # Test compare_runs  
     result = subprocess.run(
-        ["uv", "run", "scripts/results/compare_runs.py", "--task", "resolve_binary", "--latest"],
+        ["uv", "run", "scripts/results/compare_runs.py", "--task", "resolve_event", "--latest"],
         capture_output=True,
         text=True
     )

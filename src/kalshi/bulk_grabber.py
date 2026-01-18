@@ -374,5 +374,7 @@ class KalshiBulkGrabber:
 # 12. Status Field Values: S3 status can be "finalized", "determined", "settled", "closed", or 
 #     "unknown". Treat finalized/determined/settled as "resolved", closed as "closed", else "unknown".
 #     This status is critical for API call reduction logic.
-# 13. Payout Type: Capture payout_type from S3 vitals to avoid hardcoding binary markets.
+# 13. Payout Type & Scalar Absence: S3 payout_type is captured but 100% of scanned records (Feb-Mar 2025) 
+#     are "Binary Option". No scalar payout types were found. Heads up: if scalars are introduced, 
+#     the bulk S3 reports may skip them or use a different schema.
 

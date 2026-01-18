@@ -4,19 +4,19 @@ Visualize and plot experiment results.
 
 Usage examples:
     # Plot all methods comparison
-    uv run scripts/plot_results.py --task resolve_binary --metric test_brier
+    uv run scripts/plot_results.py --task resolve_event --metric test_brier
     
     # Plot method over time
     uv run scripts/plot_results.py --method mlp_nn --timeline
     
     # Plot multiple metrics
-    uv run scripts/plot_results.py --task resolve_binary --metrics test_brier,test_logloss
+    uv run scripts/plot_results.py --task resolve_event --metrics test_brier,test_logloss
     
     # Save plot to file
-    uv run scripts/plot_results.py --task resolve_binary --output results.png
+    uv run scripts/plot_results.py --task resolve_event --output results.png
     
     # Test vs bench scatter
-    uv run scripts/plot_results.py --task resolve_binary --scatter
+    uv run scripts/plot_results.py --task resolve_event --scatter
 """
 
 import sys

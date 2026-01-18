@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 from typing import Dict, Any, List
-from src.common.schema import MarketRecord, TimeSeriesPoint, MarketType, MarketStatus
+from src.common.schema import TimeSeriesPoint, MarketType, MarketStatus
 
 
 def _strip_year_suffix(ticker: str) -> str | None:
@@ -133,8 +133,8 @@ def _build_kalshi_description(raw: Dict[str, Any]) -> str:
     
     return ""
 
-def map_kalshi_market(raw: Dict[str, Any]) -> MarketRecord:
-    """Map raw Kalshi market JSON to canonical MarketRecord."""
+def map_kalshi_market(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Map raw Kalshi market JSON to canonical market record dict."""
     # Market type mapping
     market_type = _map_kalshi_market_type(raw)
         
@@ -165,21 +165,21 @@ def map_kalshi_market(raw: Dict[str, Any]) -> MarketRecord:
     # Build description from available fields
     description = _build_kalshi_description(raw)
 
-    return MarketRecord(
-        source="kalshi",
-        market_id=raw["ticker"],
-        event_id=raw.get("event_ticker"),
-        title=raw["title"],
-        description=description,
-        url=build_kalshi_url(raw.get("ticker"), raw.get("event_ticker")),
-        market_type=market_type,
-        answer_options_json=json.dumps(options),
-        end_time=end_time,
-        status=status,
-        resolved_value_json=json.dumps(resolved_value) if resolved_value is not None else None,
-        created_time=datetime.fromisoformat(raw["open_time"].replace("Z", "+00:00")) if raw.get("open_time") else None,
-        metadata_json=json.dumps(raw)
-    )
+    return {
+        "source": "kalshi",
+        "market_id": raw["ticker"],
+        "event_id": raw.get("event_ticker"),
+        "title": raw["title"],
+        "description": description,
+        "url": build_kalshi_url(raw.get("ticker"), raw.get("event_ticker")),
+        "market_type": market_type,
+        "answer_options_json": json.dumps(options),
+        "end_time": end_time,
+        "status": status,
+        "resolved_value_json": json.dumps(resolved_value) if resolved_value is not None else None,
+        "created_time": datetime.fromisoformat(raw["open_time"].replace("Z", "+00:00")) if raw.get("open_time") else None,
+        "metadata_json": json.dumps(raw)
+    }
 
 def map_kalshi_trade(ticker: str, trade: Dict[str, Any]) -> TimeSeriesPoint:
     """Map raw Kalshi trade to canonical TimeSeriesPoint."""
@@ -232,4 +232,7 @@ def map_kalshi_candle(ticker: str, candle: Dict[str, Any]) -> TimeSeriesPoint:
 # 6. Description Mapping: Kalshi API provides multiple description fields (subtitle, rules_primary, 
 #    rules_secondary). Build description by concatenating available fields in priority order.
 #    S3 bulk records lack description fields, so use API enrichment to populate proper descriptions.
+# 7. Scalar Absence: Exhaustive API/S3 scans (Feb-Mar 2025) confirm 0% scalar markets exist in practice. 
+#    The mapping logic for MarketType.NUMERIC is placeholder/spec-compliant only. If scalars appear, 
+#    verify if S3 reporting includes them or if API-only history (candles) is required.
 

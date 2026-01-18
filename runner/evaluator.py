@@ -42,7 +42,10 @@ def evaluate(method: ForecastMethod, view: DatasetView, task: Task, spec: RunSpe
         
     batch = task.collate(examples)
     preds = method.predict(batch, spec.to_dict())
-    targets = np.array([ex.target for ex in examples])
+    targets = [ex.target for ex in examples]
+    is_sequence_target = any(isinstance(t, (list, tuple, np.ndarray)) for t in targets)
+    if not is_sequence_target:
+        targets = np.array(targets)
     
     metrics = {}
     for name, fn in task.metric_fns().items():
@@ -52,4 +55,8 @@ def evaluate(method: ForecastMethod, view: DatasetView, task: Task, spec: RunSpe
             print(f"Error computing metric {name}: {e}")
             
     return metrics
+
+# --- LESSONS LEARNED ---
+# 1. Targets can be distributions; avoid forcing numpy arrays when list-of-list.
+# 2. Fail fast on metric errors to avoid silent quality regressions.
 

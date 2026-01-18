@@ -33,7 +33,7 @@ def sample_run_data():
         "spec": {
             "run_name": "test_run",
             "method": "last_price",
-            "task": "resolve_binary",
+            "task": "resolve_event",
             "dataset_path": "data/datasets/v1_unified",
             "seed": 42,
             "method_params": {"param1": "value1"},
@@ -201,7 +201,7 @@ def test_get_methods_comparison(temp_db, sample_run_data):
     temp_db.index_run(run_dir2, spec2, metrics2)
     
     # Get comparison
-    runs = temp_db.get_methods_comparison(task="resolve_binary", latest_only=True)
+    runs = temp_db.get_methods_comparison(task="resolve_event", latest_only=True)
     
     assert len(runs) == 2
     methods = [r["method"] for r in runs]

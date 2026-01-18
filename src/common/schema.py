@@ -9,6 +9,7 @@ class MarketType(str, Enum):
     MULTIPLE_CHOICE = "multiple_choice"
     NUMERIC = "numeric"
     OTHER = "other"
+    EVENT = "event"
 
 class MarketStatus(str, Enum):
     OPEN = "open"
@@ -16,15 +17,14 @@ class MarketStatus(str, Enum):
     RESOLVED = "resolved"
     UNKNOWN = "unknown"
 
-class MarketRecord(BaseModel):
+class EventRecord(BaseModel):
     source: str  # "kalshi" | "metaculus"
-    market_id: str
-    event_id: Optional[str] = None
+    event_id: str
     title: str
     description: str
     url: str
     market_type: MarketType
-    answer_options_json: str  # JSON list of options
+    options_json: str  # JSON list of option objects
     end_time: datetime
     status: MarketStatus
     resolved_value_json: Optional[str] = None

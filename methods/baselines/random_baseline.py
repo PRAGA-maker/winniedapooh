@@ -3,7 +3,7 @@ Random baseline that returns random predictions between 0 and 1.
 Simple test method for DX evaluation.
 """
 import numpy as np
-from typing import Dict, Any
+from typing import Dict, Any, List
 from methods.base import ForecastMethod
 from dataobject.io_hygiene import Batch
 
@@ -15,9 +15,13 @@ class RandomBaseline(ForecastMethod):
         self.seed = seed
         self.rng = np.random.RandomState(seed)
     
-    def predict(self, batch: Batch, spec: Dict[str, Any]) -> np.ndarray:
+    def predict(self, batch: Batch, spec: Dict[str, Any]) -> List[List[float]]:
         """Return random predictions for each example."""
-        return self.rng.uniform(0.0, 1.0, size=len(batch.examples))
+        preds = []
+        for ex in batch.examples:
+            option_count = max(1, len(ex.options))
+            preds.append(self.rng.dirichlet(np.ones(option_count)).tolist())
+        return preds
 
 
 # DX TEST NOTES:
@@ -28,3 +32,6 @@ class RandomBaseline(ForecastMethod):
 #   - Examples (LastPriceBaseline) were helpful.
 #   - The base class has minimal required methods (predict is main one).
 # Clarity: 5/5 - Very straightforward
+
+# --- LESSONS LEARNED ---
+# 1. Dirichlet is the simplest way to sample a valid simplex.

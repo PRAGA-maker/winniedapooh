@@ -34,14 +34,14 @@ def compare_parquet_datasets(df1: pd.DataFrame, df2: pd.DataFrame, tolerance: fl
         if missing_in_df1:
             differences.append(f"Columns in df2 but not df1: {missing_in_df1}")
     
-    # Check market_ids match (if both have the column)
-    if 'market_id' in df1.columns and 'market_id' in df2.columns:
-        ids1 = set(df1['market_id'])
-        ids2 = set(df2['market_id'])
+    # Check event_ids match (if both have the column)
+    if 'event_id' in df1.columns and 'event_id' in df2.columns:
+        ids1 = set(df1['event_id'])
+        ids2 = set(df2['event_id'])
         if ids1 != ids2:
             missing_in_df2 = len(ids1 - ids2)
             missing_in_df1 = len(ids2 - ids1)
-            differences.append(f"Market IDs differ: {missing_in_df2} missing in df2, {missing_in_df1} missing in df1")
+            differences.append(f"Event IDs differ: {missing_in_df2} missing in df2, {missing_in_df1} missing in df1")
     
     metrics = {
         "df1_rows": len(df1),
@@ -71,7 +71,7 @@ def validate_data_types(df: pd.DataFrame) -> Dict[str, Any]:
     warnings = []
     
     # Check required columns exist
-    required_cols = ['source', 'market_id', 'title', 'status', 'market_type']
+    required_cols = ['source', 'event_id', 'title', 'status', 'market_type', 'options_json']
     for col in required_cols:
         if col not in df.columns:
             errors.append(f"Missing required column: {col}")
@@ -86,18 +86,18 @@ def validate_data_types(df: pd.DataFrame) -> Dict[str, Any]:
             if not pd.api.types.is_datetime64_any_dtype(df[col]):
                 errors.append(f"Column {col} should be datetime but is {df[col].dtype}")
     
-    # Check 'ts' in nested lists are datetime
-    if 'ts' in df.columns:
-        sample_ts = df['ts'].iloc[0] if len(df) > 0 else None
-        if sample_ts is not None and len(sample_ts) > 0:
-            # Accept pd.Timestamp, datetime, and numpy.datetime64
-            if not isinstance(sample_ts[0], (pd.Timestamp, datetime, np.datetime64)):
-                warnings.append(f"'ts' list elements should be datetime, found {type(sample_ts[0])}")
-    
-    # Check belief values are in valid range [0, 1]
-    if 'belief' in df.columns:
-        for idx, belief_list in enumerate(df['belief'].head(100)):  # Check first 100
-            if belief_list is not None and len(belief_list) > 0:
+    # Check belief values are in valid range [0, 1] inside options_json
+    if 'options_json' in df.columns:
+        for idx, raw in enumerate(df['options_json'].head(50)):
+            if not raw or pd.isna(raw):
+                continue
+            try:
+                options = json.loads(raw)
+            except json.JSONDecodeError:
+                errors.append(f"Invalid JSON in options_json at index {idx}")
+                break
+            for option in options:
+                belief_list = option.get("belief") or []
                 valid_beliefs = [b for b in belief_list if b is not None and not (isinstance(b, float) and np.isnan(b))]
                 if valid_beliefs:
                     min_b, max_b = min(valid_beliefs), max(valid_beliefs)
@@ -114,7 +114,7 @@ def validate_data_types(df: pd.DataFrame) -> Dict[str, Any]:
             errors.append(f"Invalid status values found: {invalid}")
     
     # Check market_type values are valid
-    valid_types = {'binary', 'multiple_choice', 'numeric', 'other'}
+    valid_types = {'event'}
     if 'market_type' in df.columns:
         actual_types = set(df['market_type'].unique())
         invalid = actual_types - valid_types
@@ -122,7 +122,7 @@ def validate_data_types(df: pd.DataFrame) -> Dict[str, Any]:
             errors.append(f"Invalid market_type values found: {invalid}")
     
     # Check JSON fields parse correctly
-    json_fields = ['answer_options_json', 'resolved_value_json', 'metadata_json']
+    json_fields = ['options_json', 'resolved_value_json', 'metadata_json']
     for col in json_fields:
         if col in df.columns:
             for idx, val in enumerate(df[col].head(20)):  # Check first 20
@@ -169,27 +169,24 @@ def sample_and_validate(df: pd.DataFrame, n: int = 50, seed: int = 42) -> Dict[s
         if not row.get('description') or (isinstance(row.get('description'), str) and len(row['description'].strip()) == 0):
             issues.append("Empty description")
         
-        # Check history length
-        if 'belief' in row and row['belief'] is not None:
-            if len(row['belief']) < 0:
-                issues.append(f"Negative history length: {len(row['belief'])}")
-        
-        # Check ts and belief lists have same length
-        if 'ts' in row and 'belief' in row:
-            if row['ts'] is not None and row['belief'] is not None:
-                if len(row['ts']) != len(row['belief']):
-                    issues.append(f"ts/belief length mismatch: {len(row['ts'])} vs {len(row['belief'])}")
-        
-        # Check timestamps are sorted
-        if 'ts' in row and row['ts'] is not None and len(row['ts']) > 1:
-            ts_list = row['ts']
-            if not all(ts_list[i] <= ts_list[i+1] for i in range(len(ts_list)-1)):
-                issues.append("Timestamps not sorted")
+        # Check options_json structure
+        raw_options = row.get("options_json")
+        if raw_options:
+            try:
+                options = json.loads(raw_options)
+                for option in options:
+                    ts_list = option.get("ts") or []
+                    belief_list = option.get("belief") or []
+                    if len(ts_list) != len(belief_list):
+                        issues.append("ts/belief length mismatch in options")
+                        break
+            except json.JSONDecodeError:
+                issues.append("Invalid options_json")
         
         if issues:
             results["failed"] += 1
             results["failures"].append({
-                "market_id": row.get('market_id'),
+                "event_id": row.get('event_id'),
                 "source": row.get('source'),
                 "issues": issues
             })
@@ -201,18 +198,18 @@ def sample_and_validate(df: pd.DataFrame, n: int = 50, seed: int = 42) -> Dict[s
     return results
 
 
-def check_completeness(df: pd.DataFrame, expected_tickers: List[str]) -> Dict[str, Any]:
+def check_completeness(df: pd.DataFrame, expected_event_ids: List[str]) -> Dict[str, Any]:
     """
-    Check if all expected markets are present in the dataset.
+    Check if all expected events are present in the dataset.
     
     Args:
         df: The dataset DataFrame
-        expected_tickers: List of expected market IDs
+        expected_event_ids: List of expected event IDs
     
     Returns dict with completeness metrics.
     """
-    actual_ids = set(df['market_id']) if 'market_id' in df.columns else set()
-    expected_ids = set(expected_tickers)
+    actual_ids = set(df['event_id']) if 'event_id' in df.columns else set()
+    expected_ids = set(expected_event_ids)
     
     missing = expected_ids - actual_ids
     unexpected = actual_ids - expected_ids
@@ -246,43 +243,45 @@ def validate_history_points(df: pd.DataFrame, sample_size: int = 10) -> Dict[str
     sample = df.sample(n=min(sample_size, len(df)), random_state=42) if len(df) > 0 else df
     
     for idx, row in sample.iterrows():
-        if 'ts' not in row or 'belief' not in row:
+        raw_options = row.get("options_json")
+        if not raw_options:
             continue
-        
-        if row['ts'] is None or row['belief'] is None:
+        try:
+            options = json.loads(raw_options)
+        except json.JSONDecodeError:
             continue
-        
+
         results["markets_checked"] += 1
-        
-        ts_list = row['ts']
-        belief_list = row['belief']
-        
-        # Sample 5 random points from this market
-        if len(ts_list) > 5:
-            indices = np.random.choice(len(ts_list), size=min(5, len(ts_list)), replace=False)
-        else:
-            indices = range(len(ts_list))
-        
-        for i in indices:
-            results["points_checked"] += 1
-            
-            ts = ts_list[i]
-            belief = belief_list[i]
-            
-            # Check timestamp is valid (accept pd.Timestamp, datetime, and numpy.datetime64)
-            if not isinstance(ts, (pd.Timestamp, datetime, np.datetime64)):
-                results["issues"].append({
-                    "market_id": row.get('market_id'),
-                    "issue": f"Invalid timestamp type at index {i}: {type(ts)}"
-                })
-            
-            # Check belief is reasonable
-            if belief is not None and not np.isnan(belief):
-                if belief < 0 or belief > 1:
+
+        for option in options:
+            ts_list = option.get("ts") or []
+            belief_list = option.get("belief") or []
+            if not ts_list or not belief_list:
+                continue
+
+            if len(ts_list) > 5:
+                indices = np.random.choice(len(ts_list), size=min(5, len(ts_list)), replace=False)
+            else:
+                indices = range(len(ts_list))
+
+            for i in indices:
+                results["points_checked"] += 1
+
+                ts = ts_list[i]
+                belief = belief_list[i]
+
+                if not isinstance(ts, (str, pd.Timestamp, datetime, np.datetime64)):
                     results["issues"].append({
-                        "market_id": row.get('market_id'),
-                        "issue": f"Belief out of range at index {i}: {belief}"
+                        "event_id": row.get('event_id'),
+                        "issue": f"Invalid timestamp type at index {i}: {type(ts)}"
                     })
+
+                if belief is not None and not np.isnan(belief):
+                    if belief < 0 or belief > 1:
+                        results["issues"].append({
+                            "event_id": row.get('event_id'),
+                            "issue": f"Belief out of range at index {i}: {belief}"
+                        })
     
     results["issue_count"] = len(results["issues"])
     results["success_rate"] = 1 - (results["issue_count"] / results["points_checked"]) if results["points_checked"] > 0 else 1

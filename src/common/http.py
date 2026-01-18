@@ -48,7 +48,7 @@ class MetaculusKeyRotator:
             old_index = self.current_index
             self.current_index = (self.current_index + 1) % len(self.tokens)
             logger.warning(
-                f"Rotating Metaculus key: [{old_index + 1}→{self.current_index + 1}] "
+                f"Rotating Metaculus key: [{old_index + 1}->{self.current_index + 1}] "
                 f"(Reason: {reason}) | {len(self.tokens)} keys available"
             )
     
@@ -229,8 +229,13 @@ class HttpClient:
                             self.key_rotator.handle_rate_limit()
                             # Update Authorization header with new token
                             self.session.headers.update({"Authorization": f"Token {self.key_rotator.get_current_token()}"})
-                            # Immediate retry with new key (no backoff needed)
-                            logger.info(f"Retrying {path} with rotated key (attempt {i+1}/{max_retries})...")
+                            # Backoff even with rotation to avoid tight retry loops
+                            wait_time = (base_backoff * (2 ** i)) + random.uniform(0, 1.0)
+                            logger.warning(
+                                f"Rate limited (429) on {path}. Retrying in {wait_time:.2f}s "
+                                f"with rotated key (attempt {i+1}/{max_retries})..."
+                            )
+                            time.sleep(wait_time)
                             continue
                         else:
                             # Exponential backoff for non-rotatable clients
@@ -389,7 +394,9 @@ def get_metaculus_client():
 #     Semaphore provides additional concurrency control. requests.Session is thread-safe for 
 #     reading, but header updates (Metaculus rotation) need to be synchronized. Current 
 #     implementation uses locks for all shared state access.
-# 17. Performance Impact: Rate limiting adds ~0.055s per request (Kalshi). For 490 API calls, 
+# 17. Windows Logs: Use ASCII arrows (->) in log messages to avoid UnicodeEncodeError on cp1252.
+# 18. Metaculus 429 Handling: Apply backoff even with key rotation to avoid tight retry loops.
+# 19. Performance Impact: Rate limiting adds ~0.055s per request (Kalshi). For 490 API calls, 
 #     this is ~27s of delay time. Retry backoff adds additional time on 429s (~1-2s per retry). 
 #     Total API phase time: ~30-35s for 3.8K markets (down from ~195s for 49K markets before 
 #     optimization). The optimization reduced markets needing API by 92%, not API calls by 92% 

@@ -8,6 +8,9 @@ This directory contains comprehensive tests for the Winnie Da Pooh forecasting p
 # Run all tests
 uv run pytest tests/ -v
 
+# Run parquet quality audit (writes report + summary)
+uv run python tests/parquet_quality.py
+
 # Run specific test category
 uv run pytest tests/test_data_correctness.py -v
 uv run pytest tests/test_edge_cases.py -v
@@ -77,6 +80,14 @@ Automated code review checking:
 
 ### `run_tests.py`
 Convenience script to run full test suite with summary.
+
+### `parquet_quality.py`
+Standalone parquet quality audit:
+- Writes `parquet_quality_report.txt` + `parquet_quality_summary.json`
+- Defaults to latest dataset in `data/datasets/`
+ 
+Run:
+`uv run python tests/parquet_quality.py --output tests/parquet_quality_outputs`
 
 ## Test Data
 

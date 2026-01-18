@@ -1,0 +1,1847 @@
+{
+  "row_count": 779,
+  "columns": {
+    "source": {
+      "dtype": "object",
+      "null_count": 0,
+      "null_pct": 0.0,
+      "string_stats": {
+        "empty_count": 0,
+        "whitespace_only_count": 0,
+        "min_len": 6,
+        "max_len": 6,
+        "mean_len": 6.0
+      },
+      "value_counts_top20": {
+        "kalshi": 779
+      }
+    },
+    "event_id": {
+      "dtype": "object",
+      "null_count": 0,
+      "null_pct": 0.0,
+      "string_stats": {
+        "empty_count": 0,
+        "whitespace_only_count": 0,
+        "min_len": 3,
+        "max_len": 21,
+        "mean_len": 14.350449293966625
+      },
+      "unique_count": 779
+    },
+    "title": {
+      "dtype": "object",
+      "null_count": 0,
+      "null_pct": 0.0,
+      "string_stats": {
+        "empty_count": 0,
+        "whitespace_only_count": 0,
+        "min_len": 4,
+        "max_len": 172,
+        "mean_len": 25.473684210526315
+      }
+    },
+    "description": {
+      "dtype": "object",
+      "null_count": 0,
+      "null_pct": 0.0,
+      "string_stats": {
+        "empty_count": 0,
+        "whitespace_only_count": 0,
+        "min_len": 89,
+        "max_len": 1768,
+        "mean_len": 453.5648267008986
+      }
+    },
+    "url": {
+      "dtype": "object",
+      "null_count": 0,
+      "null_pct": 0.0,
+      "string_stats": {
+        "empty_count": 0,
+        "whitespace_only_count": 0,
+        "min_len": 39,
+        "max_len": 77,
+        "mean_len": 62.08215661103979
+      }
+    },
+    "market_type": {
+      "dtype": "object",
+      "null_count": 0,
+      "null_pct": 0.0,
+      "string_stats": {
+        "empty_count": 0,
+        "whitespace_only_count": 0,
+        "min_len": 5,
+        "max_len": 5,
+        "mean_len": 5.0
+      },
+      "value_counts_top20": {
+        "event": 779
+      }
+    },
+    "options_json": {
+      "dtype": "object",
+      "null_count": 0,
+      "null_pct": 0.0,
+      "string_stats": {
+        "empty_count": 0,
+        "whitespace_only_count": 0,
+        "min_len": 4321,
+        "max_len": 66306,
+        "mean_len": 23088.65211810013
+      },
+      "json_stats": {
+        "sampled": false,
+        "sample_size": 779,
+        "type_counts": {
+          "list": 779
+        },
+        "parse_errors": {},
+        "example_values": [
+          [
+            {
+              "option_id": "INXY-23DEC29-B2800",
+              "market_id": "INXY-23DEC29-B2800",
+              "title": "Will the S&P 500 be between 2700 and 2899.99 at the end of Dec 29, 2023?",
+              "resolved_value_json": "\"no\"",
+              "ts": [
+                "2024-01-01T23:59:59",
+                "2024-01-02T23:59:59",
+                "2024-01-03T23:59:59",
+                "2024-01-04T23:59:59",
+                "2024-01-05T23:59:59"
+              ],
+              "belief": [
+                0.01,
+                0.01,
+                0.01,
+                0.01,
+                0.01
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "open_interest": [
+                46670.0,
+                46670.0,
+                46670.0,
+                46670.0,
+                46670.0
+              ],
+              "metadata_json": "{\"can_close_early\": true, \"cap_strike\": 2899.99, \"close_time\": \"2023-12-29T21:00:00Z\", \"created_time\": \"2022-12-13T14:04:13.38052Z\", \"event_ticker\": \"INXY-23DEC29\", \"expected_expiration_time\": \"2023-12-30T00:00:00Z\", \"expiration_time\": \"2024-01-06T00:00:00Z\", \"expiration_value\": \"\", \"floor_strike\": 2700, \"last_price\": 1, \"last_price_dollars\": \"0.0100\", \"latest_expiration_time\": \"2024-01-06T00:00:00Z\", \"liquidity\": 0, \"liquidity_dollars\": \"0.0000\", \"market_type\": \"binary\", \"no_ask\": 100, \"no_ask_dollars\": \"1.0000\", \"no_bid\": 99, \"no_bid_dollars\": \"0.9900\", \"no_sub_title\": \"Outside 2700 to 2899.99\", \"notional_value\": 100, \"notional_value_dollars\": \"1.0000\", \"open_interest\": 46670, \"open_time\": \"2022-12-13T15:00:00Z\", \"previous_price\": 1, \"previous_price_dollars\": \"0.0100\", \"previous_yes_ask\": 1, \"previous_yes_ask_dollars\": \"0.0100\", \"previous_yes_bid\": 0, \"previous_yes_bid_dollars\": \"0.0000\", \"price_level_structure\": \"linear_cent\", \"price_ranges\": [{\"end\": \"1.0000\", \"start\": \"0.0000\", \"step\": \"0.0100\"}], \"response_price_units\": \"usd_cent\", \"result\": \"no\", \"rules_primary\": \"If the end-of-day S&P 500 index value for December 29, 2023 is between 2700-2899.99, then the market resolves to Yes.\", \"rules_secondary\": \"The market will close at 4:00 PM ET on December 29, 2023. The market will expire at the sooner of the first 7:00 PM ET after the release of the data, or one week after December 29, 2023.\\n\\nPursuant to the Kalshi Rulebook, the Exchange has modified the Source Agency and Underlying for indices markets. See the rules for more information.\", \"settlement_timer_seconds\": 3600, \"settlement_ts\": \"2023-12-30T02:54:00.755314Z\", \"settlement_value\": 0, \"settlement_value_dollars\": \"0.0000\", \"status\": \"finalized\", \"strike_type\": \"between\", \"subtitle\": \"2,700 to 2,899.99\", \"tick_size\": 1, \"ticker\": \"INXY-23DEC29-B2800\", \"title\": \"Will the S&P 500 be between 2700 and 2899.99 at the end of Dec 29, 2023?\", \"volume\": 81409, \"volume_24h\": 0, \"yes_ask\": 1, \"yes_ask_dollars\": \"0.0100\", \"yes_bid\": 0, \"yes_bid_dollars\": \"0.0000\", \"yes_sub_title\": \"2700 to 2899.99\"}",
+              "url": "https://kalshi.com/markets/INXY-23DEC29/INXY-23DEC29-B2800",
+              "is_synthetic": false
+            },
+            {
+              "option_id": "INXY-23DEC29-B3000",
+              "market_id": "INXY-23DEC29-B3000",
+              "title": "Will the S&P 500 be between 2900 and 3099.99 at the end of Dec 29, 2023?",
+              "resolved_value_json": "\"no\"",
+              "ts": [
+                "2024-01-01T23:59:59",
+                "2024-01-02T23:59:59",
+                "2024-01-03T23:59:59",
+                "2024-01-04T23:59:59",
+                "2024-01-05T23:59:59"
+              ],
+              "belief": [
+                0.01,
+                0.01,
+                0.01,
+                0.01,
+                0.01
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "open_interest": [
+                72568.0,
+                72568.0,
+                72568.0,
+                72568.0,
+                72568.0
+              ],
+              "metadata_json": "{\"can_close_early\": true, \"cap_strike\": 3099.99, \"close_time\": \"2023-12-29T21:00:00Z\", \"created_time\": \"2022-12-13T14:04:13.38052Z\", \"event_ticker\": \"INXY-23DEC29\", \"expected_expiration_time\": \"2023-12-30T00:00:00Z\", \"expiration_time\": \"2024-01-06T00:00:00Z\", \"expiration_value\": \"\", \"floor_strike\": 2900, \"last_price\": 1, \"last_price_dollars\": \"0.0100\", \"latest_expiration_time\": \"2024-01-06T00:00:00Z\", \"liquidity\": 0, \"liquidity_dollars\": \"0.0000\", \"market_type\": \"binary\", \"no_ask\": 100, \"no_ask_dollars\": \"1.0000\", \"no_bid\": 99, \"no_bid_dollars\": \"0.9900\", \"no_sub_title\": \"Outside 2900 to 3099.99\", \"notional_value\": 100, \"notional_value_dollars\": \"1.0000\", \"open_interest\": 72568, \"open_time\": \"2022-12-13T15:00:00Z\", \"previous_price\": 1, \"previous_price_dollars\": \"0.0100\", \"previous_yes_ask\": 1, \"previous_yes_ask_dollars\": \"0.0100\", \"previous_yes_bid\": 0, \"previous_yes_bid_dollars\": \"0.0000\", \"price_level_structure\": \"linear_cent\", \"price_ranges\": [{\"end\": \"1.0000\", \"start\": \"0.0000\", \"step\": \"0.0100\"}], \"response_price_units\": \"usd_cent\", \"result\": \"no\", \"rules_primary\": \"If the end-of-day S&P 500 index value for December 29, 2023 is between 2900-3099.99, then the market resolves to Yes.\", \"rules_secondary\": \"The market will close at 4:00 PM ET on December 29, 2023. The market will expire at the sooner of the first 7:00 PM ET after the release of the data, or one week after December 29, 2023.\\n\\nPursuant to the Kalshi Rulebook, the Exchange has modified the Source Agency and Underlying for indices markets. See the rules for more information.\", \"settlement_timer_seconds\": 3600, \"settlement_ts\": \"2023-12-30T02:54:00.755314Z\", \"settlement_value\": 0, \"settlement_value_dollars\": \"0.0000\", \"status\": \"finalized\", \"strike_type\": \"between\", \"subtitle\": \"2,900 to 3,099.99\", \"tick_size\": 1, \"ticker\": \"INXY-23DEC29-B3000\", \"title\": \"Will the S&P 500 be between 2900 and 3099.99 at the end of Dec 29, 2023?\", \"volume\": 1038418, \"volume_24h\": 0, \"yes_ask\": 1, \"yes_ask_dollars\": \"0.0100\", \"yes_bid\": 0, \"yes_bid_dollars\": \"0.0000\", \"yes_sub_title\": \"2900 to 3099.99\"}",
+              "url": "https://kalshi.com/markets/INXY-23DEC29/INXY-23DEC29-B3000",
+              "is_synthetic": false
+            },
+            {
+              "option_id": "INXY-23DEC29-B3200",
+              "market_id": "INXY-23DEC29-B3200",
+              "title": "Will the S&P 500 be between 3100 and 3299.99 at the end of Dec 29, 2023?",
+              "resolved_value_json": "\"no\"",
+              "ts": [
+                "2024-01-01T23:59:59",
+                "2024-01-02T23:59:59",
+                "2024-01-03T23:59:59",
+                "2024-01-04T23:59:59",
+                "2024-01-05T23:59:59"
+              ],
+              "belief": [
+                0.01,
+                0.01,
+                0.01,
+                0.01,
+                0.01
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "open_interest": [
+                79690.0,
+                79690.0,
+                79690.0,
+                79690.0,
+                79690.0
+              ],
+              "metadata_json": "{\"can_close_early\": true, \"cap_strike\": 3299.99, \"close_time\": \"2023-12-29T21:00:00Z\", \"created_time\": \"2022-12-13T14:04:13.38052Z\", \"event_ticker\": \"INXY-23DEC29\", \"expected_expiration_time\": \"2023-12-30T00:00:00Z\", \"expiration_time\": \"2024-01-06T00:00:00Z\", \"expiration_value\": \"\", \"floor_strike\": 3100, \"last_price\": 1, \"last_price_dollars\": \"0.0100\", \"latest_expiration_time\": \"2024-01-06T00:00:00Z\", \"liquidity\": 0, \"liquidity_dollars\": \"0.0000\", \"market_type\": \"binary\", \"no_ask\": 100, \"no_ask_dollars\": \"1.0000\", \"no_bid\": 99, \"no_bid_dollars\": \"0.9900\", \"no_sub_title\": \"Outside 3100 to 3299.99\", \"notional_value\": 100, \"notional_value_dollars\": \"1.0000\", \"open_interest\": 79690, \"open_time\": \"2022-12-13T15:00:00Z\", \"previous_price\": 1, \"previous_price_dollars\": \"0.0100\", \"previous_yes_ask\": 1, \"previous_yes_ask_dollars\": \"0.0100\", \"previous_yes_bid\": 0, \"previous_yes_bid_dollars\": \"0.0000\", \"price_level_structure\": \"linear_cent\", \"price_ranges\": [{\"end\": \"1.0000\", \"start\": \"0.0000\", \"step\": \"0.0100\"}], \"response_price_units\": \"usd_cent\", \"result\": \"no\", \"rules_primary\": \"If the end-of-day S&P 500 index value for December 29, 2023 is between 3100-3299.99, then the market resolves to Yes.\", \"rules_secondary\": \"The market will close at 4:00 PM ET on December 29, 2023. The market will expire at the sooner of the first 7:00 PM ET after the release of the data, or one week after December 29, 2023.\\n\\nPursuant to the Kalshi Rulebook, the Exchange has modified the Source Agency and Underlying for indices markets. See the rules for more information.\", \"settlement_timer_seconds\": 3600, \"settlement_ts\": \"2023-12-30T02:54:00.755314Z\", \"settlement_value\": 0, \"settlement_value_dollars\": \"0.0000\", \"status\": \"finalized\", \"strike_type\": \"between\", \"subtitle\": \"3,100 to 3,299.99\", \"tick_size\": 1, \"ticker\": \"INXY-23DEC29-B3200\", \"title\": \"Will the S&P 500 be between 3100 and 3299.99 at the end of Dec 29, 2023?\", \"volume\": 1126227, \"volume_24h\": 0, \"yes_ask\": 1, \"yes_ask_dollars\": \"0.0100\", \"yes_bid\": 0, \"yes_bid_dollars\": \"0.0000\", \"yes_sub_title\": \"3100 to 3299.99\"}",
+              "url": "https://kalshi.com/markets/INXY-23DEC29/INXY-23DEC29-B3200",
+              "is_synthetic": false
+            },
+            {
+              "option_id": "INXY-23DEC29-B3400",
+              "market_id": "INXY-23DEC29-B3400",
+              "title": "Will the S&P 500 be between 3300 and 3499.99 at the end of Dec 29, 2023?",
+              "resolved_value_json": "\"no\"",
+              "ts": [
+                "2024-01-01T23:59:59",
+                "2024-01-02T23:59:59",
+                "2024-01-03T23:59:59",
+                "2024-01-04T23:59:59",
+                "2024-01-05T23:59:59"
+              ],
+              "belief": [
+                0.01,
+                0.01,
+                0.01,
+                0.01,
+                0.01
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "open_interest": [
+                88310.0,
+                88310.0,
+                88310.0,
+                88310.0,
+                88310.0
+              ],
+              "metadata_json": "{\"can_close_early\": true, \"cap_strike\": 3499.99, \"close_time\": \"2023-12-29T21:00:00Z\", \"created_time\": \"2022-12-13T14:04:13.38052Z\", \"event_ticker\": \"INXY-23DEC29\", \"expected_expiration_time\": \"2023-12-30T00:00:00Z\", \"expiration_time\": \"2024-01-06T00:00:00Z\", \"expiration_value\": \"\", \"floor_strike\": 3300, \"last_price\": 1, \"last_price_dollars\": \"0.0100\", \"latest_expiration_time\": \"2024-01-06T00:00:00Z\", \"liquidity\": 0, \"liquidity_dollars\": \"0.0000\", \"market_type\": \"binary\", \"no_ask\": 100, \"no_ask_dollars\": \"1.0000\", \"no_bid\": 99, \"no_bid_dollars\": \"0.9900\", \"no_sub_title\": \"Outside 3300 to 3499.99\", \"notional_value\": 100, \"notional_value_dollars\": \"1.0000\", \"open_interest\": 88310, \"open_time\": \"2022-12-13T15:00:00Z\", \"previous_price\": 1, \"previous_price_dollars\": \"0.0100\", \"previous_yes_ask\": 1, \"previous_yes_ask_dollars\": \"0.0100\", \"previous_yes_bid\": 0, \"previous_yes_bid_dollars\": \"0.0000\", \"price_level_structure\": \"linear_cent\", \"price_ranges\": [{\"end\": \"1.0000\", \"start\": \"0.0000\", \"step\": \"0.0100\"}], \"response_price_units\": \"usd_cent\", \"result\": \"no\", \"rules_primary\": \"If the end-of-day S&P 500 index value for December 29, 2023 is between 3300-3499.99, then the market resolves to Yes.\", \"rules_secondary\": \"The market will close at 4:00 PM ET on December 29, 2023. The market will expire at the sooner of the first 7:00 PM ET after the release of the data, or one week after December 29, 2023.\\n\\nPursuant to the Kalshi Rulebook, the Exchange has modified the Source Agency and Underlying for indices markets. See the rules for more information.\", \"settlement_timer_seconds\": 3600, \"settlement_ts\": \"2023-12-30T02:54:00.755314Z\", \"settlement_value\": 0, \"settlement_value_dollars\": \"0.0000\", \"status\": \"finalized\", \"strike_type\": \"between\", \"subtitle\": \"3,300 to 3,499.99\", \"tick_size\": 1, \"ticker\": \"INXY-23DEC29-B3400\", \"title\": \"Will the S&P 500 be between 3300 and 3499.99 at the end of Dec 29, 2023?\", \"volume\": 1297627, \"volume_24h\": 0, \"yes_ask\": 1, \"yes_ask_dollars\": \"0.0100\", \"yes_bid\": 0, \"yes_bid_dollars\": \"0.0000\", \"yes_sub_title\": \"3300 to 3499.99\"}",
+              "url": "https://kalshi.com/markets/INXY-23DEC29/INXY-23DEC29-B3400",
+              "is_synthetic": false
+            },
+            {
+              "option_id": "INXY-23DEC29-B3600",
+              "market_id": "INXY-23DEC29-B3600",
+              "title": "Will the S&P 500 be between 3500 and 3699.99 at the end of Dec 29, 2023?",
+              "resolved_value_json": "\"no\"",
+              "ts": [
+                "2024-01-01T23:59:59",
+                "2024-01-02T23:59:59",
+                "2024-01-03T23:59:59",
+                "2024-01-04T23:59:59",
+                "2024-01-05T23:59:59"
+              ],
+              "belief": [
+                0.01,
+                0.01,
+                0.01,
+                0.01,
+                0.01
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "open_interest": [
+                89947.0,
+                89947.0,
+                89947.0,
+                89947.0,
+                89947.0
+              ],
+              "metadata_json": "{\"can_close_early\": true, \"cap_strike\": 3699.99, \"close_time\": \"2023-12-29T21:00:00Z\", \"created_time\": \"2022-12-13T14:04:13.38052Z\", \"event_ticker\": \"INXY-23DEC29\", \"expected_expiration_time\": \"2023-12-30T00:00:00Z\", \"expiration_time\": \"2024-01-06T00:00:00Z\", \"expiration_value\": \"\", \"floor_strike\": 3500, \"last_price\": 1, \"last_price_dollars\": \"0.0100\", \"latest_expiration_time\": \"2024-01-06T00:00:00Z\", \"liquidity\": 0, \"liquidity_dollars\": \"0.0000\", \"market_type\": \"binary\", \"no_ask\": 100, \"no_ask_dollars\": \"1.0000\", \"no_bid\": 99, \"no_bid_dollars\": \"0.9900\", \"no_sub_title\": \"Outside 3500 to 3699.99\", \"notional_value\": 100, \"notional_value_dollars\": \"1.0000\", \"open_interest\": 89947, \"open_time\": \"2022-12-13T15:00:00Z\", \"previous_price\": 1, \"previous_price_dollars\": \"0.0100\", \"previous_yes_ask\": 1, \"previous_yes_ask_dollars\": \"0.0100\", \"previous_yes_bid\": 0, \"previous_yes_bid_dollars\": \"0.0000\", \"price_level_structure\": \"linear_cent\", \"price_ranges\": [{\"end\": \"1.0000\", \"start\": \"0.0000\", \"step\": \"0.0100\"}], \"response_price_units\": \"usd_cent\", \"result\": \"no\", \"rules_primary\": \"If the end-of-day S&P 500 index value for December 29, 2023 is between 3500-3699.99, then the market resolves to Yes.\", \"rules_secondary\": \"The market will close at 4:00 PM ET on December 29, 2023. The market will expire at the sooner of the first 7:00 PM ET after the release of the data, or one week after December 29, 2023.\\n\\nPursuant to the Kalshi Rulebook, the Exchange has modified the Source Agency and Underlying for indices markets. See the rules for more information.\", \"settlement_timer_seconds\": 3600, \"settlement_ts\": \"2023-12-30T02:54:00.755314Z\", \"settlement_value\": 0, \"settlement_value_dollars\": \"0.0000\", \"status\": \"finalized\", \"strike_type\": \"between\", \"subtitle\": \"3,500 to 3,699.99\", \"tick_size\": 1, \"ticker\": \"INXY-23DEC29-B3600\", \"title\": \"Will the S&P 500 be between 3500 and 3699.99 at the end of Dec 29, 2023?\", \"volume\": 1922481, \"volume_24h\": 0, \"yes_ask\": 1, \"yes_ask_dollars\": \"0.0100\", \"yes_bid\": 0, \"yes_bid_dollars\": \"0.0000\", \"yes_sub_title\": \"3500 to 3699.99\"}",
+              "url": "https://kalshi.com/markets/INXY-23DEC29/INXY-23DEC29-B3600",
+              "is_synthetic": false
+            },
+            {
+              "option_id": "INXY-23DEC29-B3800",
+              "market_id": "INXY-23DEC29-B3800",
+              "title": "Will the S&P 500 be between 3700 and 3899.99 at the end of Dec 29, 2023?",
+              "resolved_value_json": "\"no\"",
+              "ts": [
+                "2024-01-01T23:59:59",
+                "2024-01-02T23:59:59",
+                "2024-01-03T23:59:59",
+                "2024-01-04T23:59:59",
+                "2024-01-05T23:59:59"
+              ],
+              "belief": [
+                0.01,
+                0.01,
+                0.01,
+                0.01,
+                0.01
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "open_interest": [
+                92898.0,
+                92898.0,
+                92898.0,
+                92898.0,
+                92898.0
+              ],
+              "metadata_json": "{\"can_close_early\": true, \"cap_strike\": 3899.99, \"close_time\": \"2023-12-29T21:00:00Z\", \"created_time\": \"2022-12-13T14:04:13.38052Z\", \"event_ticker\": \"INXY-23DEC29\", \"expected_expiration_time\": \"2023-12-30T00:00:00Z\", \"expiration_time\": \"2024-01-06T00:00:00Z\", \"expiration_value\": \"\", \"floor_strike\": 3700, \"last_price\": 1, \"last_price_dollars\": \"0.0100\", \"latest_expiration_time\": \"2024-01-06T00:00:00Z\", \"liquidity\": 0, \"liquidity_dollars\": \"0.0000\", \"market_type\": \"binary\", \"no_ask\": 100, \"no_ask_dollars\": \"1.0000\", \"no_bid\": 99, \"no_bid_dollars\": \"0.9900\", \"no_sub_title\": \"Outside 3700 to 3899.99\", \"notional_value\": 100, \"notional_value_dollars\": \"1.0000\", \"open_interest\": 92898, \"open_time\": \"2022-12-13T15:00:00Z\", \"previous_price\": 1, \"previous_price_dollars\": \"0.0100\", \"previous_yes_ask\": 1, \"previous_yes_ask_dollars\": \"0.0100\", \"previous_yes_bid\": 0, \"previous_yes_bid_dollars\": \"0.0000\", \"price_level_structure\": \"linear_cent\", \"price_ranges\": [{\"end\": \"1.0000\", \"start\": \"0.0000\", \"step\": \"0.0100\"}], \"response_price_units\": \"usd_cent\", \"result\": \"no\", \"rules_primary\": \"If the end-of-day S&P 500 index value for December 29, 2023 is between 3700-3899.99, then the market resolves to Yes.\", \"rules_secondary\": \"The market will close at 4:00 PM ET on December 29, 2023. The market will expire at the sooner of the first 7:00 PM ET after the release of the data, or one week after December 29, 2023.\\n\\nPursuant to the Kalshi Rulebook, the Exchange has modified the Source Agency and Underlying for indices markets. See the rules for more information.\", \"settlement_timer_seconds\": 3600, \"settlement_ts\": \"2023-12-30T02:54:00.755314Z\", \"settlement_value\": 0, \"settlement_value_dollars\": \"0.0000\", \"status\": \"finalized\", \"strike_type\": \"between\", \"subtitle\": \"3,700 to 3,899.99\", \"tick_size\": 1, \"ticker\": \"INXY-23DEC29-B3800\", \"title\": \"Will the S&P 500 be between 3700 and 3899.99 at the end of Dec 29, 2023?\", \"volume\": 3223751, \"volume_24h\": 0, \"yes_ask\": 1, \"yes_ask_dollars\": \"0.0100\", \"yes_bid\": 0, \"yes_bid_dollars\": \"0.0000\", \"yes_sub_title\": \"3700 to 3899.99\"}",
+              "url": "https://kalshi.com/markets/INXY-23DEC29/INXY-23DEC29-B3800",
+              "is_synthetic": false
+            },
+            {
+              "option_id": "INXY-23DEC29-B4000",
+              "market_id": "INXY-23DEC29-B4000",
+              "title": "Will the S&P 500 be between 3900 and 4099.99 at the end of Dec 29, 2023?",
+              "resolved_value_json": "\"no\"",
+              "ts": [
+                "2024-01-01T23:59:59",
+                "2024-01-02T23:59:59",
+                "2024-01-03T23:59:59",
+                "2024-01-04T23:59:59",
+                "2024-01-05T23:59:59"
+              ],
+              "belief": [
+                0.01,
+                0.01,
+                0.01,
+                0.01,
+                0.01
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "open_interest": [
+                88758.0,
+                88758.0,
+                88758.0,
+                88758.0,
+                88758.0
+              ],
+              "metadata_json": "{\"can_close_early\": true, \"cap_strike\": 4099.99, \"close_time\": \"2023-12-29T21:00:00Z\", \"created_time\": \"2022-12-13T14:04:13.38052Z\", \"event_ticker\": \"INXY-23DEC29\", \"expected_expiration_time\": \"2023-12-30T00:00:00Z\", \"expiration_time\": \"2024-01-06T00:00:00Z\", \"expiration_value\": \"\", \"floor_strike\": 3900, \"last_price\": 1, \"last_price_dollars\": \"0.0100\", \"latest_expiration_time\": \"2024-01-06T00:00:00Z\", \"liquidity\": 0, \"liquidity_dollars\": \"0.0000\", \"market_type\": \"binary\", \"no_ask\": 100, \"no_ask_dollars\": \"1.0000\", \"no_bid\": 99, \"no_bid_dollars\": \"0.9900\", \"no_sub_title\": \"Outside 3900 to 4099.99\", \"notional_value\": 100, \"notional_value_dollars\": \"1.0000\", \"open_interest\": 88758, \"open_time\": \"2022-12-13T15:00:00Z\", \"previous_price\": 1, \"previous_price_dollars\": \"0.0100\", \"previous_yes_ask\": 1, \"previous_yes_ask_dollars\": \"0.0100\", \"previous_yes_bid\": 0, \"previous_yes_bid_dollars\": \"0.0000\", \"price_level_structure\": \"linear_cent\", \"price_ranges\": [{\"end\": \"1.0000\", \"start\": \"0.0000\", \"step\": \"0.0100\"}], \"response_price_units\": \"usd_cent\", \"result\": \"no\", \"rules_primary\": \"If the end-of-day S&P 500 index value for December 29, 2023 is between 3900-4099.99, then the market resolves to Yes.\", \"rules_secondary\": \"The market will close at 4:00 PM ET on December 29, 2023. The market will expire at the sooner of the first 7:00 PM ET after the release of the data, or one week after December 29, 2023.\\n\\nPursuant to the Kalshi Rulebook, the Exchange has modified the Source Agency and Underlying for indices markets. See the rules for more information.\", \"settlement_timer_seconds\": 3600, \"settlement_ts\": \"2023-12-30T02:54:00.755314Z\", \"settlement_value\": 0, \"settlement_value_dollars\": \"0.0000\", \"status\": \"finalized\", \"strike_type\": \"between\", \"subtitle\": \"3,900 to 4,099.99\", \"tick_size\": 1, \"ticker\": \"INXY-23DEC29-B4000\", \"title\": \"Will the S&P 500 be between 3900 and 4099.99 at the end of Dec 29, 2023?\", \"volume\": 653661, \"volume_24h\": 0, \"yes_ask\": 1, \"yes_ask_dollars\": \"0.0100\", \"yes_bid\": 0, \"yes_bid_dollars\": \"0.0000\", \"yes_sub_title\": \"3900 to 4099.99\"}",
+              "url": "https://kalshi.com/markets/INXY-23DEC29/INXY-23DEC29-B4000",
+              "is_synthetic": false
+            },
+            {
+              "option_id": "INXY-23DEC29-B4200",
+              "market_id": "INXY-23DEC29-B4200",
+              "title": "Will the S&P 500 be between 4100 and 4299.99 at the end of Dec 29, 2023?",
+              "resolved_value_json": "\"no\"",
+              "ts": [
+                "2024-01-01T23:59:59",
+                "2024-01-02T23:59:59",
+                "2024-01-03T23:59:59",
+                "2024-01-04T23:59:59",
+                "2024-01-05T23:59:59"
+              ],
+              "belief": [
+                0.01,
+                0.01,
+                0.01,
+                0.01,
+                0.01
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "open_interest": [
+                96199.0,
+                96199.0,
+                96199.0,
+                96199.0,
+                96199.0
+              ],
+              "metadata_json": "{\"can_close_early\": true, \"cap_strike\": 4299.99, \"close_time\": \"2023-12-29T21:00:00Z\", \"created_time\": \"2022-12-13T14:04:13.38052Z\", \"event_ticker\": \"INXY-23DEC29\", \"expected_expiration_time\": \"2023-12-30T00:00:00Z\", \"expiration_time\": \"2024-01-06T00:00:00Z\", \"expiration_value\": \"\", \"floor_strike\": 4100, \"last_price\": 1, \"last_price_dollars\": \"0.0100\", \"latest_expiration_time\": \"2024-01-06T00:00:00Z\", \"liquidity\": 0, \"liquidity_dollars\": \"0.0000\", \"market_type\": \"binary\", \"no_ask\": 100, \"no_ask_dollars\": \"1.0000\", \"no_bid\": 99, \"no_bid_dollars\": \"0.9900\", \"no_sub_title\": \"Outside 4100 to 4299.99\", \"notional_value\": 100, \"notional_value_dollars\": \"1.0000\", \"open_interest\": 96199, \"open_time\": \"2022-12-13T15:00:00Z\", \"previous_price\": 1, \"previous_price_dollars\": \"0.0100\", \"previous_yes_ask\": 1, \"previous_yes_ask_dollars\": \"0.0100\", \"previous_yes_bid\": 0, \"previous_yes_bid_dollars\": \"0.0000\", \"price_level_structure\": \"linear_cent\", \"price_ranges\": [{\"end\": \"1.0000\", \"start\": \"0.0000\", \"step\": \"0.0100\"}], \"response_price_units\": \"usd_cent\", \"result\": \"no\", \"rules_primary\": \"If the end-of-day S&P 500 index value for December 29, 2023 is between 4100-4299.99, then the market resolves to Yes.\", \"rules_secondary\": \"The market will close at 4:00 PM ET on December 29, 2023. The market will expire at the sooner of the first 7:00 PM ET after the release of the data, or one week after December 29, 2023.\\n\\nPursuant to the Kalshi Rulebook, the Exchange has modified the Source Agency and Underlying for indices markets. See the rules for more information.\", \"settlement_timer_seconds\": 3600, \"settlement_ts\": \"2023-12-30T02:54:00.755314Z\", \"settlement_value\": 0, \"settlement_value_dollars\": \"0.0000\", \"status\": \"finalized\", \"strike_type\": \"between\", \"subtitle\": \"4,100 to 4,299.99\", \"tick_size\": 1, \"ticker\": \"INXY-23DEC29-B4200\", \"title\": \"Will the S&P 500 be between 4100 and 4299.99 at the end of Dec 29, 2023?\", \"volume\": 590929, \"volume_24h\": 0, \"yes_ask\": 1, \"yes_ask_dollars\": \"0.0100\", \"yes_bid\": 0, \"yes_bid_dollars\": \"0.0000\", \"yes_sub_title\": \"4100 to 4299.99\"}",
+              "url": "https://kalshi.com/markets/INXY-23DEC29/INXY-23DEC29-B4200",
+              "is_synthetic": false
+            },
+            {
+              "option_id": "INXY-23DEC29-B4400",
+              "market_id": "INXY-23DEC29-B4400",
+              "title": "Will the S&P 500 be between 4300 and 4499.99 at the end of Dec 29, 2023?",
+              "resolved_value_json": "\"no\"",
+              "ts": [
+                "2024-01-01T23:59:59",
+                "2024-01-02T23:59:59",
+                "2024-01-03T23:59:59",
+                "2024-01-04T23:59:59",
+                "2024-01-05T23:59:59"
+              ],
+              "belief": [
+                0.01,
+                0.01,
+                0.01,
+                0.01,
+                0.01
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "open_interest": [
+                105186.0,
+                105186.0,
+                105186.0,
+                105186.0,
+                105186.0
+              ],
+              "metadata_json": "{\"can_close_early\": true, \"cap_strike\": 4499.99, \"close_time\": \"2023-12-29T21:00:00Z\", \"created_time\": \"2022-12-13T14:04:13.38052Z\", \"event_ticker\": \"INXY-23DEC29\", \"expected_expiration_time\": \"2023-12-30T00:00:00Z\", \"expiration_time\": \"2024-01-06T00:00:00Z\", \"expiration_value\": \"\", \"floor_strike\": 4300, \"last_price\": 1, \"last_price_dollars\": \"0.0100\", \"latest_expiration_time\": \"2024-01-06T00:00:00Z\", \"liquidity\": 0, \"liquidity_dollars\": \"0.0000\", \"market_type\": \"binary\", \"no_ask\": 100, \"no_ask_dollars\": \"1.0000\", \"no_bid\": 99, \"no_bid_dollars\": \"0.9900\", \"no_sub_title\": \"Outside 4300 to 4499.99\", \"notional_value\": 100, \"notional_value_dollars\": \"1.0000\", \"open_interest\": 105186, \"open_time\": \"2022-12-13T15:00:00Z\", \"previous_price\": 1, \"previous_price_dollars\": \"0.0100\", \"previous_yes_ask\": 1, \"previous_yes_ask_dollars\": \"0.0100\", \"previous_yes_bid\": 0, \"previous_yes_bid_dollars\": \"0.0000\", \"price_level_structure\": \"linear_cent\", \"price_ranges\": [{\"end\": \"1.0000\", \"start\": \"0.0000\", \"step\": \"0.0100\"}], \"response_price_units\": \"usd_cent\", \"result\": \"no\", \"rules_primary\": \"If the end-of-day S&P 500 index value for December 29, 2023 is between 4300-4499.99, then the market resolves to Yes.\", \"rules_secondary\": \"The market will close at 4:00 PM ET on December 29, 2023. The market will expire at the sooner of the first 7:00 PM ET after the release of the data, or one week after December 29, 2023.\\n\\nPursuant to the Kalshi Rulebook, the Exchange has modified the Source Agency and Underlying for indices markets. See the rules for more information.\", \"settlement_timer_seconds\": 3600, \"settlement_ts\": \"2023-12-30T02:54:00.755314Z\", \"settlement_value\": 0, \"settlement_value_dollars\": \"0.0000\", \"status\": \"finalized\", \"strike_type\": \"between\", \"subtitle\": \"4,300 to 4,499.99\", \"tick_size\": 1, \"ticker\": \"INXY-23DEC29-B4400\", \"title\": \"Will the S&P 500 be between 4300 and 4499.99 at the end of Dec 29, 2023?\", \"volume\": 355189, \"volume_24h\": 0, \"yes_ask\": 1, \"yes_ask_dollars\": \"0.0100\", \"yes_bid\": 0, \"yes_bid_dollars\": \"0.0000\", \"yes_sub_title\": \"4300 to 4499.99\"}",
+              "url": "https://kalshi.com/markets/INXY-23DEC29/INXY-23DEC29-B4400",
+              "is_synthetic": false
+            },
+            {
+              "option_id": "INXY-23DEC29-B4600",
+              "market_id": "INXY-23DEC29-B4600",
+              "title": "Will the S&P 500 be between 4500 and 4699.99 at the end of Dec 29, 2023?",
+              "resolved_value_json": "\"no\"",
+              "ts": [
+                "2024-01-01T23:59:59",
+                "2024-01-02T23:59:59",
+                "2024-01-03T23:59:59",
+                "2024-01-04T23:59:59",
+                "2024-01-05T23:59:59"
+              ],
+              "belief": [
+                0.02,
+                0.02,
+                0.02,
+                0.02,
+                0.02
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "open_interest": [
+                114010.0,
+                114010.0,
+                114010.0,
+                114010.0,
+                114010.0
+              ],
+              "metadata_json": "{\"can_close_early\": true, \"cap_strike\": 4699.99, \"close_time\": \"2023-12-29T21:00:00Z\", \"created_time\": \"2022-12-13T14:04:13.38052Z\", \"event_ticker\": \"INXY-23DEC29\", \"expected_expiration_time\": \"2023-12-30T00:00:00Z\", \"expiration_time\": \"2024-01-06T00:00:00Z\", \"expiration_value\": \"\", \"floor_strike\": 4500, \"last_price\": 2, \"last_price_dollars\": \"0.0200\", \"latest_expiration_time\": \"2024-01-06T00:00:00Z\", \"liquidity\": 0, \"liquidity_dollars\": \"0.0000\", \"market_type\": \"binary\", \"no_ask\": 100, \"no_ask_dollars\": \"1.0000\", \"no_bid\": 99, \"no_bid_dollars\": \"0.9900\", \"no_sub_title\": \"Outside 4500 to 4699.99\", \"notional_value\": 100, \"notional_value_dollars\": \"1.0000\", \"open_interest\": 114010, \"open_time\": \"2022-12-13T15:00:00Z\", \"previous_price\": 1, \"previous_price_dollars\": \"0.0100\", \"previous_yes_ask\": 3, \"previous_yes_ask_dollars\": \"0.0300\", \"previous_yes_bid\": 0, \"previous_yes_bid_dollars\": \"0.0000\", \"price_level_structure\": \"linear_cent\", \"price_ranges\": [{\"end\": \"1.0000\", \"start\": \"0.0000\", \"step\": \"0.0100\"}], \"response_price_units\": \"usd_cent\", \"result\": \"no\", \"rules_primary\": \"If the end-of-day S&P 500 index value for December 29, 2023 is between 4500-4699.99, then the market resolves to Yes.\", \"rules_secondary\": \"The market will close at 4:00 PM ET on December 29, 2023. The market will expire at the sooner of the first 7:00 PM ET after the release of the data, or one week after December 29, 2023.\\n\\nPursuant to the Kalshi Rulebook, the Exchange has modified the Source Agency and Underlying for indices markets. See the rules for more information.\", \"settlement_timer_seconds\": 3600, \"settlement_ts\": \"2023-12-30T02:54:00.755314Z\", \"settlement_value\": 0, \"settlement_value_dollars\": \"0.0000\", \"status\": \"finalized\", \"strike_type\": \"between\", \"subtitle\": \"4,500 to 4,699.99\", \"tick_size\": 1, \"ticker\": \"INXY-23DEC29-B4600\", \"title\": \"Will the S&P 500 be between 4500 and 4699.99 at the end of Dec 29, 2023?\", \"volume\": 477318, \"volume_24h\": 0, \"yes_ask\": 1, \"yes_ask_dollars\": \"0.0100\", \"yes_bid\": 0, \"yes_bid_dollars\": \"0.0000\", \"yes_sub_title\": \"4500 to 4699.99\"}",
+              "url": "https://kalshi.com/markets/INXY-23DEC29/INXY-23DEC29-B4600",
+              "is_synthetic": false
+            },
+            {
+              "option_id": "INXY-23DEC29-B4800",
+              "market_id": "INXY-23DEC29-B4800",
+              "title": "Will the S&P 500 be between 4700 and 4899.99 at the end of Dec 29, 2023?",
+              "resolved_value_json": "\"yes\"",
+              "ts": [
+                "2024-01-01T23:59:59",
+                "2024-01-02T23:59:59",
+                "2024-01-03T23:59:59",
+                "2024-01-04T23:59:59",
+                "2024-01-05T23:59:59"
+              ],
+              "belief": [
+                0.98,
+                0.98,
+                0.98,
+                0.98,
+                0.98
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "open_interest": [
+                103624.0,
+                103624.0,
+                103624.0,
+                103624.0,
+                103624.0
+              ],
+              "metadata_json": "{\"can_close_early\": true, \"cap_strike\": 4899.99, \"close_time\": \"2023-12-29T21:00:00Z\", \"created_time\": \"2022-12-13T14:04:13.38052Z\", \"event_ticker\": \"INXY-23DEC29\", \"expected_expiration_time\": \"2023-12-30T00:00:00Z\", \"expiration_time\": \"2024-01-06T00:00:00Z\", \"expiration_value\": \"4769.83\", \"floor_strike\": 4700, \"last_price\": 98, \"last_price_dollars\": \"0.9800\", \"latest_expiration_time\": \"2024-01-06T00:00:00Z\", \"liquidity\": 0, \"liquidity_dollars\": \"0.0000\", \"market_type\": \"binary\", \"no_ask\": 2, \"no_ask_dollars\": \"0.0200\", \"no_bid\": 0, \"no_bid_dollars\": \"0.0000\", \"no_sub_title\": \"Outside 4700 to 4899.99\", \"notional_value\": 100, \"notional_value_dollars\": \"1.0000\", \"open_interest\": 103624, \"open_time\": \"2022-12-13T15:00:00Z\", \"previous_price\": 96, \"previous_price_dollars\": \"0.9600\", \"previous_yes_ask\": 99, \"previous_yes_ask_dollars\": \"0.9900\", \"previous_yes_bid\": 97, \"previous_yes_bid_dollars\": \"0.9700\", \"price_level_structure\": \"linear_cent\", \"price_ranges\": [{\"end\": \"1.0000\", \"start\": \"0.0000\", \"step\": \"0.0100\"}], \"response_price_units\": \"usd_cent\", \"result\": \"yes\", \"rules_primary\": \"If the end-of-day S&P 500 index value for December 29, 2023 is between 4700-4899.99, then the market resolves to Yes.\", \"rules_secondary\": \"The market will close at 4:00 PM ET on December 29, 2023. The market will expire at the sooner of the first 7:00 PM ET after the release of the data, or one week after December 29, 2023.\\n\\nPursuant to the Kalshi Rulebook, the Exchange has modified the Source Agency and Underlying for indices markets. See the rules for more information.\", \"settlement_timer_seconds\": 3600, \"settlement_ts\": \"2023-12-30T02:54:00.755314Z\", \"settlement_value\": 100, \"settlement_value_dollars\": \"1.0000\", \"status\": \"finalized\", \"strike_type\": \"between\", \"subtitle\": \"4,700 to 4,899.99\", \"tick_size\": 1, \"ticker\": \"INXY-23DEC29-B4800\", \"title\": \"Will the S&P 500 be between 4700 and 4899.99 at the end of Dec 29, 2023?\", \"volume\": 626611, \"volume_24h\": 0, \"yes_ask\": 100, \"yes_ask_dollars\": \"1.0000\", \"yes_bid\": 98, \"yes_bid_dollars\": \"0.9800\", \"yes_sub_title\": \"4700 to 4899.99\"}",
+              "url": "https://kalshi.com/markets/INXY-23DEC29/INXY-23DEC29-B4800",
+              "is_synthetic": false
+            },
+            {
+              "option_id": "INXY-23DEC29-B5000",
+              "market_id": "INXY-23DEC29-B5000",
+              "title": "Will the S&P 500 be between 4900 and 5099.99 at the end of Dec 29, 2023?",
+              "resolved_value_json": "\"no\"",
+              "ts": [
+                "2024-01-01T23:59:59",
+                "2024-01-02T23:59:59",
+                "2024-01-03T23:59:59",
+                "2024-01-04T23:59:59",
+                "2024-01-05T23:59:59"
+              ],
+              "belief": [
+                0.01,
+                0.01,
+                0.01,
+                0.01,
+                0.01
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "open_interest": [
+                141531.0,
+                141531.0,
+                141531.0,
+                141531.0,
+                141531.0
+              ],
+              "metadata_json": "{\"can_close_early\": true, \"cap_strike\": 5099.99, \"close_time\": \"2023-12-29T21:00:00Z\", \"created_time\": \"2022-12-13T14:04:13.38052Z\", \"event_ticker\": \"INXY-23DEC29\", \"expected_expiration_time\": \"2023-12-30T00:00:00Z\", \"expiration_time\": \"2024-01-06T00:00:00Z\", \"expiration_value\": \"\", \"floor_strike\": 4900, \"last_price\": 1, \"last_price_dollars\": \"0.0100\", \"latest_expiration_time\": \"2024-01-06T00:00:00Z\", \"liquidity\": 0, \"liquidity_dollars\": \"0.0000\", \"market_type\": \"binary\", \"no_ask\": 100, \"no_ask_dollars\": \"1.0000\", \"no_bid\": 99, \"no_bid_dollars\": \"0.9900\", \"no_sub_title\": \"Outside 4900 to 5099.99\", \"notional_value\": 100, \"notional_value_dollars\": \"1.0000\", \"open_interest\": 141531, \"open_time\": \"2022-12-13T15:00:00Z\", \"previous_price\": 1, \"previous_price_dollars\": \"0.0100\", \"previous_yes_ask\": 2, \"previous_yes_ask_dollars\": \"0.0200\", \"previous_yes_bid\": 0, \"previous_yes_bid_dollars\": \"0.0000\", \"price_level_structure\": \"linear_cent\", \"price_ranges\": [{\"end\": \"1.0000\", \"start\": \"0.0000\", \"step\": \"0.0100\"}], \"response_price_units\": \"usd_cent\", \"result\": \"no\", \"rules_primary\": \"If the end-of-day S&P 500 index value for December 29, 2023 is between 4900-5099.99, then the market resolves to Yes.\", \"rules_secondary\": \"The market will close at 4:00 PM ET on December 29, 2023. The market will expire at the sooner of the first 7:00 PM ET after the release of the data, or one week after December 29, 2023.\\n\\nPursuant to the Kalshi Rulebook, the Exchange has modified the Source Agency and Underlying for indices markets. See the rules for more information.\", \"settlement_timer_seconds\": 3600, \"settlement_ts\": \"2023-12-30T02:54:00.755314Z\", \"settlement_value\": 0, \"settlement_value_dollars\": \"0.0000\", \"status\": \"finalized\", \"strike_type\": \"between\", \"subtitle\": \"4,900 to 5,099.99\", \"tick_size\": 1, \"ticker\": \"INXY-23DEC29-B5000\", \"title\": \"Will the S&P 500 be between 4900 and 5099.99 at the end of Dec 29, 2023?\", \"volume\": 521072, \"volume_24h\": 0, \"yes_ask\": 1, \"yes_ask_dollars\": \"0.0100\", \"yes_bid\": 0, \"yes_bid_dollars\": \"0.0000\", \"yes_sub_title\": \"4900 to 5099.99\"}",
+              "url": "https://kalshi.com/markets/INXY-23DEC29/INXY-23DEC29-B5000",
+              "is_synthetic": false
+            },
+            {
+              "option_id": "INXY-23DEC29-B5200",
+              "market_id": "INXY-23DEC29-B5200",
+              "title": "Will the S&P 500 be between 5100 and 5299.99 at the end of Dec 29, 2023?",
+              "resolved_value_json": "\"no\"",
+              "ts": [
+                "2024-01-01T23:59:59",
+                "2024-01-02T23:59:59",
+                "2024-01-03T23:59:59",
+                "2024-01-04T23:59:59",
+                "2024-01-05T23:59:59"
+              ],
+              "belief": [
+                0.01,
+                0.01,
+                0.01,
+                0.01,
+                0.01
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "open_interest": [
+                62009.0,
+                62009.0,
+                62009.0,
+                62009.0,
+                62009.0
+              ],
+              "metadata_json": "{\"can_close_early\": true, \"cap_strike\": 5299.99, \"close_time\": \"2023-12-29T21:00:00Z\", \"created_time\": \"2022-12-13T14:04:13.38052Z\", \"event_ticker\": \"INXY-23DEC29\", \"expected_expiration_time\": \"2023-12-30T00:00:00Z\", \"expiration_time\": \"2024-01-06T00:00:00Z\", \"expiration_value\": \"\", \"floor_strike\": 5100, \"last_price\": 1, \"last_price_dollars\": \"0.0100\", \"latest_expiration_time\": \"2024-01-06T00:00:00Z\", \"liquidity\": 0, \"liquidity_dollars\": \"0.0000\", \"market_type\": \"binary\", \"no_ask\": 100, \"no_ask_dollars\": \"1.0000\", \"no_bid\": 99, \"no_bid_dollars\": \"0.9900\", \"no_sub_title\": \"Outside 5100 to 5299.99\", \"notional_value\": 100, \"notional_value_dollars\": \"1.0000\", \"open_interest\": 62009, \"open_time\": \"2022-12-13T15:00:00Z\", \"previous_price\": 1, \"previous_price_dollars\": \"0.0100\", \"previous_yes_ask\": 1, \"previous_yes_ask_dollars\": \"0.0100\", \"previous_yes_bid\": 0, \"previous_yes_bid_dollars\": \"0.0000\", \"price_level_structure\": \"linear_cent\", \"price_ranges\": [{\"end\": \"1.0000\", \"start\": \"0.0000\", \"step\": \"0.0100\"}], \"response_price_units\": \"usd_cent\", \"result\": \"no\", \"rules_primary\": \"If the end-of-day S&P 500 index value for December 29, 2023 is between 5100-5299.99, then the market resolves to Yes.\", \"rules_secondary\": \"The market will close at 4:00 PM ET on December 29, 2023. The market will expire at the sooner of the first 7:00 PM ET after the release of the data, or one week after December 29, 2023.\\n\\nPursuant to the Kalshi Rulebook, the Exchange has modified the Source Agency and Underlying for indices markets. See the rules for more information.\", \"settlement_timer_seconds\": 3600, \"settlement_ts\": \"2023-12-30T02:54:00.755314Z\", \"settlement_value\": 0, \"settlement_value_dollars\": \"0.0000\", \"status\": \"finalized\", \"strike_type\": \"between\", \"subtitle\": \"5,100 to 5,299.99\", \"tick_size\": 1, \"ticker\": \"INXY-23DEC29-B5200\", \"title\": \"Will the S&P 500 be between 5100 and 5299.99 at the end of Dec 29, 2023?\", \"volume\": 3444842, \"volume_24h\": 0, \"yes_ask\": 1, \"yes_ask_dollars\": \"0.0100\", \"yes_bid\": 0, \"yes_bid_dollars\": \"0.0000\", \"yes_sub_title\": \"5100 to 5299.99\"}",
+              "url": "https://kalshi.com/markets/INXY-23DEC29/INXY-23DEC29-B5200",
+              "is_synthetic": false
+            },
+            {
+              "option_id": "INXY-23DEC29-T2700",
+              "market_id": "INXY-23DEC29-T2700",
+              "title": "Will the S&P 500 be below 2700 at the end of Dec 29, 2023?",
+              "resolved_value_json": "\"no\"",
+              "ts": [
+                "2024-01-01T23:59:59",
+                "2024-01-02T23:59:59",
+                "2024-01-03T23:59:59",
+                "2024-01-04T23:59:59",
+                "2024-01-05T23:59:59"
+              ],
+              "belief": [
+                0.01,
+                0.01,
+                0.01,
+                0.01,
+                0.01
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "open_interest": [
+                71262.0,
+                71262.0,
+                71262.0,
+                71262.0,
+                71262.0
+              ],
+              "metadata_json": "{\"can_close_early\": true, \"cap_strike\": 2700, \"close_time\": \"2023-12-29T21:00:00Z\", \"created_time\": \"2022-12-13T14:04:13.38052Z\", \"event_ticker\": \"INXY-23DEC29\", \"expected_expiration_time\": \"2023-12-30T00:00:00Z\", \"expiration_time\": \"2024-01-06T00:00:00Z\", \"expiration_value\": \"\", \"last_price\": 1, \"last_price_dollars\": \"0.0100\", \"latest_expiration_time\": \"2024-01-06T00:00:00Z\", \"liquidity\": 0, \"liquidity_dollars\": \"0.0000\", \"market_type\": \"binary\", \"no_ask\": 100, \"no_ask_dollars\": \"1.0000\", \"no_bid\": 99, \"no_bid_dollars\": \"0.9900\", \"no_sub_title\": \"Outside 2699.99 or below\", \"notional_value\": 100, \"notional_value_dollars\": \"1.0000\", \"open_interest\": 71262, \"open_time\": \"2022-12-13T15:00:00Z\", \"previous_price\": 1, \"previous_price_dollars\": \"0.0100\", \"previous_yes_ask\": 1, \"previous_yes_ask_dollars\": \"0.0100\", \"previous_yes_bid\": 0, \"previous_yes_bid_dollars\": \"0.0000\", \"price_level_structure\": \"linear_cent\", \"price_ranges\": [{\"end\": \"1.0000\", \"start\": \"0.0000\", \"step\": \"0.0100\"}], \"response_price_units\": \"usd_cent\", \"result\": \"no\", \"rules_primary\": \"If the end-of-day S&P 500 index value for December 29, 2023 is below 2700, then the market resolves to Yes.\", \"rules_secondary\": \"The market will close at 4:00 PM ET on December 29, 2023. The market will expire at the sooner of the first 7:00 PM ET after the release of the data, or one week after December 29, 2023.\\n\\nPursuant to the Kalshi Rulebook, the Exchange has modified the Source Agency and Underlying for indices markets. See the rules for more information.\", \"settlement_timer_seconds\": 3600, \"settlement_ts\": \"2023-12-30T02:54:00.755314Z\", \"settlement_value\": 0, \"settlement_value_dollars\": \"0.0000\", \"status\": \"finalized\", \"strike_type\": \"less\", \"subtitle\": \"2,699.99 or lower\", \"tick_size\": 1, \"ticker\": \"INXY-23DEC29-T2700\", \"title\": \"Will the S&P 500 be below 2700 at the end of Dec 29, 2023?\", \"volume\": 485823, \"volume_24h\": 0, \"yes_ask\": 1, \"yes_ask_dollars\": \"0.0100\", \"yes_bid\": 0, \"yes_bid_dollars\": \"0.0000\", \"yes_sub_title\": \"2699.99 or below\"}",
+              "url": "https://kalshi.com/markets/INXY-23DEC29/INXY-23DEC29-T2700",
+              "is_synthetic": false
+            },
+            {
+              "option_id": "INXY-23DEC29-T5299.99",
+              "market_id": "INXY-23DEC29-T5299.99",
+              "title": "Will the S&P 500 be above 5299.99 at the end of Dec 29, 2023?",
+              "resolved_value_json": "\"no\"",
+              "ts": [
+                "2024-01-01T23:59:59",
+                "2024-01-02T23:59:59",
+                "2024-01-03T23:59:59",
+                "2024-01-04T23:59:59",
+                "2024-01-05T23:59:59"
+              ],
+              "belief": [
+                0.01,
+                0.01,
+                0.01,
+                0.01,
+                0.01
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "open_interest": [
+                59770.0,
+                59770.0,
+                59770.0,
+                59770.0,
+                59770.0
+              ],
+              "metadata_json": "{\"can_close_early\": true, \"close_time\": \"2023-12-29T21:00:00Z\", \"created_time\": \"2022-12-13T14:04:13.38052Z\", \"event_ticker\": \"INXY-23DEC29\", \"expected_expiration_time\": \"2023-12-30T00:00:00Z\", \"expiration_time\": \"2024-01-06T00:00:00Z\", \"expiration_value\": \"\", \"floor_strike\": 5299.99, \"last_price\": 1, \"last_price_dollars\": \"0.0100\", \"latest_expiration_time\": \"2024-01-06T00:00:00Z\", \"liquidity\": 0, \"liquidity_dollars\": \"0.0000\", \"market_type\": \"binary\", \"no_ask\": 100, \"no_ask_dollars\": \"1.0000\", \"no_bid\": 99, \"no_bid_dollars\": \"0.9900\", \"no_sub_title\": \"Outside 5300.0 or above\", \"notional_value\": 100, \"notional_value_dollars\": \"1.0000\", \"open_interest\": 59770, \"open_time\": \"2022-12-13T15:00:00Z\", \"previous_price\": 1, \"previous_price_dollars\": \"0.0100\", \"previous_yes_ask\": 1, \"previous_yes_ask_dollars\": \"0.0100\", \"previous_yes_bid\": 0, \"previous_yes_bid_dollars\": \"0.0000\", \"price_level_structure\": \"linear_cent\", \"price_ranges\": [{\"end\": \"1.0000\", \"start\": \"0.0000\", \"step\": \"0.0100\"}], \"response_price_units\": \"usd_cent\", \"result\": \"no\", \"rules_primary\": \"If the end-of-day S&P 500 index value for December 29, 2023 is above 5299.99, then the market resolves to Yes.\", \"rules_secondary\": \"The market will close at 4:00 PM ET on December 29, 2023. The market will expire at the sooner of the first 7:00 PM ET after the release of the data, or one week after December 29, 2023.\\n\\nPursuant to the Kalshi Rulebook, the Exchange has modified the Source Agency and Underlying for indices markets. See the rules for more information.\", \"settlement_timer_seconds\": 3600, \"settlement_ts\": \"2023-12-30T02:54:00.755314Z\", \"settlement_value\": 0, \"settlement_value_dollars\": \"0.0000\", \"status\": \"finalized\", \"strike_type\": \"greater\", \"subtitle\": \"5,300 or higher\", \"tick_size\": 1, \"ticker\": \"INXY-23DEC29-T5299.99\", \"title\": \"Will the S&P 500 be above 5299.99 at the end of Dec 29, 2023?\", \"volume\": 1150625, \"volume_24h\": 0, \"yes_ask\": 1, \"yes_ask_dollars\": \"0.0100\", \"yes_bid\": 0, \"yes_bid_dollars\": \"0.0000\", \"yes_sub_title\": \"5300.0 or above\"}",
+              "url": "https://kalshi.com/markets/INXY-23DEC29/INXY-23DEC29-T5299.99",
+              "is_synthetic": false
+            }
+          ],
+          [
+            {
+              "option_id": "Cuts",
+              "market_id": "RATECUT-24DEC31",
+              "title": "Cuts",
+              "resolved_value_json": "\"yes\"",
+              "ts": [
+                "2024-01-01T23:59:59",
+                "2024-01-02T23:59:59",
+                "2024-01-03T23:59:59",
+                "2024-01-04T23:59:59",
+                "2024-01-05T23:59:59",
+                "2024-01-06T23:59:59",
+                "2024-01-07T23:59:59",
+                "2024-01-08T23:59:59",
+                "2024-01-09T23:59:59",
+                "2024-01-10T23:59:59",
+                "2024-01-11T23:59:59",
+                "2024-01-12T23:59:59",
+                "2024-01-13T23:59:59",
+                "2024-01-14T23:59:59",
+                "2024-01-15T23:59:59",
+                "2024-01-16T23:59:59",
+                "2024-01-17T23:59:59",
+                "2024-01-18T23:59:59",
+                "2024-01-19T23:59:59",
+                "2024-01-20T23:59:59",
+                "2024-01-21T23:59:59",
+                "2024-01-22T23:59:59",
+                "2024-01-23T23:59:59",
+                "2024-01-24T23:59:59",
+                "2024-01-25T23:59:59",
+                "2024-01-26T23:59:59",
+                "2024-01-27T23:59:59",
+                "2024-01-28T23:59:59",
+                "2024-01-29T23:59:59",
+                "2024-01-30T23:59:59",
+                "2024-01-31T23:59:59"
+              ],
+              "belief": [
+                0.97,
+                0.98,
+                0.965,
+                0.95,
+                0.95,
+                0.95,
+                0.95,
+                0.95,
+                0.95,
+                0.965,
+                0.97,
+                0.965,
+                0.97,
+                0.97,
+                0.97,
+                0.97,
+                0.97,
+                0.97,
+                0.97,
+                0.97,
+                0.97,
+                0.96,
+                0.96,
+                0.96,
+                0.98,
+                0.98,
+                0.98,
+                0.98,
+                0.985,
+                0.99,
+                0.99
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                146.0,
+                146.0,
+                985.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                40.0,
+                2.0,
+                287.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                23.0,
+                0.0,
+                0.0,
+                3960.0,
+                0.0,
+                0.0,
+                0.0,
+                500.0,
+                0.0,
+                0.0
+              ],
+              "open_interest": [
+                16391.0,
+                16391.0,
+                17376.0,
+                17376.0,
+                17376.0,
+                17376.0,
+                17376.0,
+                17376.0,
+                17376.0,
+                17336.0,
+                17336.0,
+                17623.0,
+                17623.0,
+                17623.0,
+                17623.0,
+                17623.0,
+                17623.0,
+                17623.0,
+                17623.0,
+                17623.0,
+                17623.0,
+                17646.0,
+                17646.0,
+                17646.0,
+                17646.0,
+                17646.0,
+                17646.0,
+                17646.0,
+                17446.0,
+                17446.0,
+                17446.0
+              ],
+              "metadata_json": "{\"can_close_early\": true, \"close_time\": \"2024-09-19T14:00:09.200083Z\", \"created_time\": \"2022-12-13T14:00:07.151908Z\", \"event_ticker\": \"RATECUT-24DEC31\", \"expected_expiration_time\": \"2025-01-01T15:00:00Z\", \"expiration_time\": \"2025-01-07T15:00:00Z\", \"expiration_value\": \"Yes\", \"last_price\": 95, \"last_price_dollars\": \"0.9500\", \"latest_expiration_time\": \"2025-01-07T15:00:00Z\", \"liquidity\": 0, \"liquidity_dollars\": \"0.0000\", \"market_type\": \"binary\", \"no_ask\": 1, \"no_ask_dollars\": \"0.0100\", \"no_bid\": 0, \"no_bid_dollars\": \"0.0000\", \"no_sub_title\": \"Doesn't cut\", \"notional_value\": 100, \"notional_value_dollars\": \"1.0000\", \"open_interest\": 28873, \"open_time\": \"2022-12-13T15:00:00Z\", \"previous_price\": 0, \"previous_price_dollars\": \"0.0000\", \"previous_yes_ask\": 100, \"previous_yes_ask_dollars\": \"1.0000\", \"previous_yes_bid\": 99, \"previous_yes_bid_dollars\": \"0.9900\", \"price_level_structure\": \"linear_cent\", \"price_ranges\": [{\"end\": \"1.0000\", \"start\": \"0.0000\", \"step\": \"0.0100\"}], \"response_price_units\": \"usd_cent\", \"result\": \"yes\", \"rules_primary\": \"If the Federal Reserve cuts its target federal funds rate range at least once between December 13, 2022 and December 31, 2024, then the market resolves to Yes.\", \"rules_secondary\": \"The market will close and determine on the first 10 AM ET following the occurrence of the event if the event occurs prior to the target date.\", \"settlement_timer_seconds\": 10800, \"settlement_ts\": \"2024-09-19T17:01:00.251279Z\", \"settlement_value\": 100, \"settlement_value_dollars\": \"1.0000\", \"status\": \"finalized\", \"subtitle\": \"\", \"tick_size\": 1, \"ticker\": \"RATECUT-24DEC31\", \"title\": \"Will the Federal Reserve cut rates before 2025?\", \"volume\": 254967, \"volume_24h\": 0, \"yes_ask\": 100, \"yes_ask_dollars\": \"1.0000\", \"yes_bid\": 99, \"yes_bid_dollars\": \"0.9900\", \"yes_sub_title\": \"Cuts\"}",
+              "url": "https://kalshi.com/markets/RATECUT-24DEC31/RATECUT-24DEC31",
+              "is_synthetic": false
+            },
+            {
+              "option_id": "Doesn't cut",
+              "market_id": "RATECUT-24DEC31",
+              "title": "Doesn't cut",
+              "resolved_value_json": "\"no\"",
+              "ts": [
+                "2024-01-01T23:59:59",
+                "2024-01-02T23:59:59",
+                "2024-01-03T23:59:59",
+                "2024-01-04T23:59:59",
+                "2024-01-05T23:59:59",
+                "2024-01-06T23:59:59",
+                "2024-01-07T23:59:59",
+                "2024-01-08T23:59:59",
+                "2024-01-09T23:59:59",
+                "2024-01-10T23:59:59",
+                "2024-01-11T23:59:59",
+                "2024-01-12T23:59:59",
+                "2024-01-13T23:59:59",
+                "2024-01-14T23:59:59",
+                "2024-01-15T23:59:59",
+                "2024-01-16T23:59:59",
+                "2024-01-17T23:59:59",
+                "2024-01-18T23:59:59",
+                "2024-01-19T23:59:59",
+                "2024-01-20T23:59:59",
+                "2024-01-21T23:59:59",
+                "2024-01-22T23:59:59",
+                "2024-01-23T23:59:59",
+                "2024-01-24T23:59:59",
+                "2024-01-25T23:59:59",
+                "2024-01-26T23:59:59",
+                "2024-01-27T23:59:59",
+                "2024-01-28T23:59:59",
+                "2024-01-29T23:59:59",
+                "2024-01-30T23:59:59",
+                "2024-01-31T23:59:59"
+              ],
+              "belief": [
+                0.030000000000000027,
+                0.020000000000000018,
+                0.03500000000000003,
+                0.050000000000000044,
+                0.050000000000000044,
+                0.050000000000000044,
+                0.050000000000000044,
+                0.050000000000000044,
+                0.050000000000000044,
+                0.03500000000000003,
+                0.030000000000000027,
+                0.03500000000000003,
+                0.030000000000000027,
+                0.030000000000000027,
+                0.030000000000000027,
+                0.030000000000000027,
+                0.030000000000000027,
+                0.030000000000000027,
+                0.030000000000000027,
+                0.030000000000000027,
+                0.030000000000000027,
+                0.040000000000000036,
+                0.040000000000000036,
+                0.040000000000000036,
+                0.020000000000000018,
+                0.020000000000000018,
+                0.020000000000000018,
+                0.020000000000000018,
+                0.015000000000000013,
+                0.010000000000000009,
+                0.010000000000000009
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "open_interest": [
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "metadata_json": "{\"can_close_early\": true, \"close_time\": \"2024-09-19T14:00:09.200083Z\", \"created_time\": \"2022-12-13T14:00:07.151908Z\", \"event_ticker\": \"RATECUT-24DEC31\", \"expected_expiration_time\": \"2025-01-01T15:00:00Z\", \"expiration_time\": \"2025-01-07T15:00:00Z\", \"expiration_value\": \"Yes\", \"last_price\": 95, \"last_price_dollars\": \"0.9500\", \"latest_expiration_time\": \"2025-01-07T15:00:00Z\", \"liquidity\": 0, \"liquidity_dollars\": \"0.0000\", \"market_type\": \"binary\", \"no_ask\": 1, \"no_ask_dollars\": \"0.0100\", \"no_bid\": 0, \"no_bid_dollars\": \"0.0000\", \"no_sub_title\": \"Doesn't cut\", \"notional_value\": 100, \"notional_value_dollars\": \"1.0000\", \"open_interest\": 28873, \"open_time\": \"2022-12-13T15:00:00Z\", \"previous_price\": 0, \"previous_price_dollars\": \"0.0000\", \"previous_yes_ask\": 100, \"previous_yes_ask_dollars\": \"1.0000\", \"previous_yes_bid\": 99, \"previous_yes_bid_dollars\": \"0.9900\", \"price_level_structure\": \"linear_cent\", \"price_ranges\": [{\"end\": \"1.0000\", \"start\": \"0.0000\", \"step\": \"0.0100\"}], \"response_price_units\": \"usd_cent\", \"result\": \"yes\", \"rules_primary\": \"If the Federal Reserve cuts its target federal funds rate range at least once between December 13, 2022 and December 31, 2024, then the market resolves to Yes.\", \"rules_secondary\": \"The market will close and determine on the first 10 AM ET following the occurrence of the event if the event occurs prior to the target date.\", \"settlement_timer_seconds\": 10800, \"settlement_ts\": \"2024-09-19T17:01:00.251279Z\", \"settlement_value\": 100, \"settlement_value_dollars\": \"1.0000\", \"status\": \"finalized\", \"subtitle\": \"\", \"tick_size\": 1, \"ticker\": \"RATECUT-24DEC31\", \"title\": \"Will the Federal Reserve cut rates before 2025?\", \"volume\": 254967, \"volume_24h\": 0, \"yes_ask\": 100, \"yes_ask_dollars\": \"1.0000\", \"yes_bid\": 99, \"yes_bid_dollars\": \"0.9900\", \"yes_sub_title\": \"Cuts\"}",
+              "url": "https://kalshi.com/markets/RATECUT-24DEC31/RATECUT-24DEC31",
+              "is_synthetic": true,
+              "derived_from_market_id": "RATECUT-24DEC31"
+            }
+          ],
+          [
+            {
+              "option_id": "Supreme Court rules against FTC",
+              "market_id": "AXONFTC-24DEC31",
+              "title": "Supreme Court rules against FTC",
+              "resolved_value_json": "\"yes\"",
+              "ts": [
+                "2024-01-01T23:59:59",
+                "2024-01-02T23:59:59",
+                "2024-01-03T23:59:59",
+                "2024-01-04T23:59:59",
+                "2024-01-05T23:59:59",
+                "2024-01-06T23:59:59",
+                "2024-01-07T23:59:59",
+                "2024-01-08T23:59:59",
+                "2024-01-09T23:59:59",
+                "2024-01-10T23:59:59",
+                "2024-01-11T23:59:59",
+                "2024-01-12T23:59:59",
+                "2024-01-13T23:59:59",
+                "2024-01-14T23:59:59",
+                "2024-01-15T23:59:59",
+                "2024-01-16T23:59:59",
+                "2024-01-17T23:59:59",
+                "2024-01-18T23:59:59",
+                "2024-01-19T23:59:59",
+                "2024-01-20T23:59:59",
+                "2024-01-21T23:59:59",
+                "2024-01-22T23:59:59",
+                "2024-01-23T23:59:59",
+                "2024-01-24T23:59:59",
+                "2024-01-25T23:59:59",
+                "2024-01-26T23:59:59",
+                "2024-01-27T23:59:59",
+                "2024-01-28T23:59:59",
+                "2024-01-29T23:59:59",
+                "2024-01-30T23:59:59",
+                "2024-01-31T23:59:59"
+              ],
+              "belief": [
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99,
+                0.99
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "open_interest": [
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0,
+                1674.0
+              ],
+              "metadata_json": "{\"can_close_early\": true, \"close_time\": \"2023-04-17T17:23:26.302185Z\", \"created_time\": \"2022-12-10T14:55:15.586733Z\", \"event_ticker\": \"AXONFTC-24DEC31\", \"expected_expiration_time\": \"2024-12-31T15:00:00Z\", \"expiration_time\": \"2024-12-31T15:00:00Z\", \"expiration_value\": \"Supreme Court rules that statutory review schemes set out in the Securities Exchange Act and Federal Trade Commission Act do not displace a district court\\u2019s federal-question jurisdiction over claims challenging as unconstitutional the structure or existence of the SEC or FTC.\", \"last_price\": 99, \"last_price_dollars\": \"0.9900\", \"latest_expiration_time\": \"2024-12-31T15:00:00Z\", \"liquidity\": 0, \"liquidity_dollars\": \"0.0000\", \"market_type\": \"binary\", \"no_ask\": 100, \"no_ask_dollars\": \"1.0000\", \"no_bid\": 0, \"no_bid_dollars\": \"0.0000\", \"no_sub_title\": \"Supreme Court rules for FTC\", \"notional_value\": 100, \"notional_value_dollars\": \"1.0000\", \"open_interest\": 1674, \"open_time\": \"2022-12-10T15:00:00Z\", \"previous_price\": 99, \"previous_price_dollars\": \"0.9900\", \"previous_yes_ask\": 100, \"previous_yes_ask_dollars\": \"1.0000\", \"previous_yes_bid\": 0, \"previous_yes_bid_dollars\": \"0.0000\", \"price_level_structure\": \"linear_cent\", \"price_ranges\": [{\"end\": \"1.0000\", \"start\": \"0.0000\", \"step\": \"0.0100\"}], \"response_price_units\": \"usd_cent\", \"result\": \"yes\", \"rules_primary\": \"If the Supreme Court rules that Congress did not impliedly strip federal district courts of jurisdiction over constitutional challenges to (at least one of or a subset of) the Federal Trade Commission\\u2019s structure, procedures, or existence, then the market resolves to Yes.\", \"rules_secondary\": \"The above is a shorthand for the complete, legally binding terms and conditions. Please see AXONFTC in the Rulebook for the complete terms and conditions.\", \"settlement_timer_seconds\": 10800, \"settlement_ts\": \"2023-04-17T22:03:01.262553Z\", \"settlement_value\": 100, \"settlement_value_dollars\": \"1.0000\", \"status\": \"finalized\", \"subtitle\": \"\", \"tick_size\": 1, \"ticker\": \"AXONFTC-24DEC31\", \"title\": \"Will the USSC rule that Congress did not impliedly strip federal courts of jurisdiction to adjudicate constitutional challenges to the structure of the FTC in Axon. v. FTC?\", \"volume\": 1778, \"volume_24h\": 0, \"yes_ask\": 100, \"yes_ask_dollars\": \"1.0000\", \"yes_bid\": 0, \"yes_bid_dollars\": \"0.0000\", \"yes_sub_title\": \"Supreme Court rules against FTC\"}",
+              "url": "https://kalshi.com/markets/AXONFTC-24DEC31/AXONFTC-24DEC31",
+              "is_synthetic": false
+            },
+            {
+              "option_id": "Supreme Court rules for FTC",
+              "market_id": "AXONFTC-24DEC31",
+              "title": "Supreme Court rules for FTC",
+              "resolved_value_json": "\"no\"",
+              "ts": [
+                "2024-01-01T23:59:59",
+                "2024-01-02T23:59:59",
+                "2024-01-03T23:59:59",
+                "2024-01-04T23:59:59",
+                "2024-01-05T23:59:59",
+                "2024-01-06T23:59:59",
+                "2024-01-07T23:59:59",
+                "2024-01-08T23:59:59",
+                "2024-01-09T23:59:59",
+                "2024-01-10T23:59:59",
+                "2024-01-11T23:59:59",
+                "2024-01-12T23:59:59",
+                "2024-01-13T23:59:59",
+                "2024-01-14T23:59:59",
+                "2024-01-15T23:59:59",
+                "2024-01-16T23:59:59",
+                "2024-01-17T23:59:59",
+                "2024-01-18T23:59:59",
+                "2024-01-19T23:59:59",
+                "2024-01-20T23:59:59",
+                "2024-01-21T23:59:59",
+                "2024-01-22T23:59:59",
+                "2024-01-23T23:59:59",
+                "2024-01-24T23:59:59",
+                "2024-01-25T23:59:59",
+                "2024-01-26T23:59:59",
+                "2024-01-27T23:59:59",
+                "2024-01-28T23:59:59",
+                "2024-01-29T23:59:59",
+                "2024-01-30T23:59:59",
+                "2024-01-31T23:59:59"
+              ],
+              "belief": [
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009,
+                0.010000000000000009
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "open_interest": [
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "metadata_json": "{\"can_close_early\": true, \"close_time\": \"2023-04-17T17:23:26.302185Z\", \"created_time\": \"2022-12-10T14:55:15.586733Z\", \"event_ticker\": \"AXONFTC-24DEC31\", \"expected_expiration_time\": \"2024-12-31T15:00:00Z\", \"expiration_time\": \"2024-12-31T15:00:00Z\", \"expiration_value\": \"Supreme Court rules that statutory review schemes set out in the Securities Exchange Act and Federal Trade Commission Act do not displace a district court\\u2019s federal-question jurisdiction over claims challenging as unconstitutional the structure or existence of the SEC or FTC.\", \"last_price\": 99, \"last_price_dollars\": \"0.9900\", \"latest_expiration_time\": \"2024-12-31T15:00:00Z\", \"liquidity\": 0, \"liquidity_dollars\": \"0.0000\", \"market_type\": \"binary\", \"no_ask\": 100, \"no_ask_dollars\": \"1.0000\", \"no_bid\": 0, \"no_bid_dollars\": \"0.0000\", \"no_sub_title\": \"Supreme Court rules for FTC\", \"notional_value\": 100, \"notional_value_dollars\": \"1.0000\", \"open_interest\": 1674, \"open_time\": \"2022-12-10T15:00:00Z\", \"previous_price\": 99, \"previous_price_dollars\": \"0.9900\", \"previous_yes_ask\": 100, \"previous_yes_ask_dollars\": \"1.0000\", \"previous_yes_bid\": 0, \"previous_yes_bid_dollars\": \"0.0000\", \"price_level_structure\": \"linear_cent\", \"price_ranges\": [{\"end\": \"1.0000\", \"start\": \"0.0000\", \"step\": \"0.0100\"}], \"response_price_units\": \"usd_cent\", \"result\": \"yes\", \"rules_primary\": \"If the Supreme Court rules that Congress did not impliedly strip federal district courts of jurisdiction over constitutional challenges to (at least one of or a subset of) the Federal Trade Commission\\u2019s structure, procedures, or existence, then the market resolves to Yes.\", \"rules_secondary\": \"The above is a shorthand for the complete, legally binding terms and conditions. Please see AXONFTC in the Rulebook for the complete terms and conditions.\", \"settlement_timer_seconds\": 10800, \"settlement_ts\": \"2023-04-17T22:03:01.262553Z\", \"settlement_value\": 100, \"settlement_value_dollars\": \"1.0000\", \"status\": \"finalized\", \"subtitle\": \"\", \"tick_size\": 1, \"ticker\": \"AXONFTC-24DEC31\", \"title\": \"Will the USSC rule that Congress did not impliedly strip federal courts of jurisdiction to adjudicate constitutional challenges to the structure of the FTC in Axon. v. FTC?\", \"volume\": 1778, \"volume_24h\": 0, \"yes_ask\": 100, \"yes_ask_dollars\": \"1.0000\", \"yes_bid\": 0, \"yes_bid_dollars\": \"0.0000\", \"yes_sub_title\": \"Supreme Court rules against FTC\"}",
+              "url": "https://kalshi.com/markets/AXONFTC-24DEC31/AXONFTC-24DEC31",
+              "is_synthetic": true,
+              "derived_from_market_id": "AXONFTC-24DEC31"
+            }
+          ]
+        ]
+      }
+    },
+    "end_time": {
+      "dtype": "datetime64[ns, UTC]",
+      "null_count": 0,
+      "null_pct": 0.0,
+      "datetime_stats": {
+        "min": "2024-01-01T15:00:00+00:00",
+        "max": "2030-01-02T04:59:00+00:00",
+        "time_midnight_ratio": 0.2374839537869063,
+        "unique_dates": 113
+      }
+    },
+    "status": {
+      "dtype": "object",
+      "null_count": 0,
+      "null_pct": 0.0,
+      "string_stats": {
+        "empty_count": 0,
+        "whitespace_only_count": 0,
+        "min_len": 4,
+        "max_len": 8,
+        "mean_len": 7.463414634146342
+      },
+      "value_counts_top20": {
+        "resolved": 573,
+        "closed": 203,
+        "open": 3
+      }
+    },
+    "resolved_value_json": {
+      "dtype": "object",
+      "null_count": 206,
+      "null_pct": 0.2644415917843389,
+      "string_stats": {
+        "empty_count": 0,
+        "whitespace_only_count": 0,
+        "min_len": 4,
+        "max_len": 61,
+        "mean_len": 19.31239092495637
+      },
+      "json_stats": {
+        "sampled": false,
+        "sample_size": 573,
+        "type_counts": {
+          "str": 573
+        },
+        "parse_errors": {},
+        "example_values": [
+          "INXY-23DEC29-B4800",
+          "Cuts",
+          "Supreme Court rules against FTC"
+        ]
+      }
+    },
+    "created_time": {
+      "dtype": "datetime64[ns, UTC]",
+      "null_count": 0,
+      "null_pct": 0.0,
+      "datetime_stats": {
+        "min": "2021-11-04T14:00:00+00:00",
+        "max": "2024-01-31T21:00:00+00:00",
+        "time_midnight_ratio": 0.0025673940949935813,
+        "unique_dates": 117
+      }
+    },
+    "metadata_json": {
+      "dtype": "object",
+      "null_count": 0,
+      "null_pct": 0.0,
+      "string_stats": {
+        "empty_count": 0,
+        "whitespace_only_count": 0,
+        "min_len": 75,
+        "max_len": 525,
+        "mean_len": 120.9229781771502
+      },
+      "json_stats": {
+        "sampled": false,
+        "sample_size": 779,
+        "type_counts": {
+          "dict": 779
+        },
+        "parse_errors": {},
+        "example_values": [
+          {
+            "option_count": 15,
+            "resolved_yes_count": 1,
+            "resolved_yes_option_ids": [
+              "INXY-23DEC29-B4800"
+            ]
+          },
+          {
+            "option_count": 2,
+            "resolved_yes_count": 1,
+            "resolved_yes_option_ids": [
+              "Cuts"
+            ]
+          },
+          {
+            "option_count": 2,
+            "resolved_yes_count": 1,
+            "resolved_yes_option_ids": [
+              "Supreme Court rules against FTC"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "cross_checks": {
+    "options_json_stats": {
+      "sample_rows": 779,
+      "parse_errors": {},
+      "options_count_stats": {
+        "min": 2,
+        "max": 15,
+        "mean": 7.2528883183568675
+      },
+      "options_ts_belief_length_mismatch": 0,
+      "options_ts_bid_length_mismatch": 0,
+      "options_ts_ask_length_mismatch": 0
+    },
+    "resolved_without_value": 0,
+    "resolved_status_empty_value": 0,
+    "resolved_status_nonempty_value": 573,
+    "has_value_without_resolved_status": 0,
+    "created_after_end": 0
+  },
+  "validation": {
+    "source_filter": "all",
+    "errors": [],
+    "warnings": [
+      "missing_sources=['metaculus']"
+    ],
+    "source_counts": {
+      "kalshi": 779
+    },
+    "schema": {
+      "errors": [],
+      "warnings": []
+    }
+  }
+}

@@ -3,6 +3,7 @@ import os
 import time
 import json
 import sqlite3
+import requests
 import pandas as pd
 from datetime import datetime, timedelta, date
 from pathlib import Path
@@ -181,6 +182,16 @@ class CanonicalStore:
             rows = conn.execute("SELECT market_id FROM markets WHERE source = ?", (source,)).fetchall()
             return [r[0] for r in rows]
 
+    def get_existing_event_ids(self, source: str) -> List[str]:
+        """Return a list of all event_ids for a given source (fallback to market_id)."""
+        with self._get_conn() as conn:
+            rows = conn.execute("""
+                SELECT DISTINCT COALESCE(event_id, market_id)
+                FROM markets
+                WHERE source = ?
+            """, (source,)).fetchall()
+            return [r[0] for r in rows if r[0] is not None]
+
     def get_market_ids_needing_enrichment(self, source: str) -> List[str]:
         """Return market_ids with fallback or missing metadata."""
         with self._get_conn() as conn:
@@ -321,23 +332,29 @@ class CanonicalStore:
             # Pre-convert times
             markets_df["end_time"] = pd.to_datetime(markets_df["end_time"], errors='coerce')
             markets_df["created_time"] = pd.to_datetime(markets_df["created_time"], errors='coerce')
+            markets_df["event_id"] = markets_df["event_id"].fillna(markets_df["market_id"])
 
-        # 2. Process history in chunks - OPTIMIZATION: Larger chunks for better throughput
-        unique_market_keys = markets_df[["source", "market_id"]].values.tolist()
-        chunk_size = 100000  # OPTIMIZATION: Increased from 50k to 100k for fewer transactions
+        # 2. Process events in chunks to keep event integrity
+        unique_event_keys = markets_df[["source", "event_id"]].drop_duplicates().values.tolist()
+        chunk_size = 50000
         
         writer = None
         parquet_file = output_dir / "data.parquet"
 
         from tqdm import tqdm
-        num_chunks = (len(unique_market_keys) - 1) // chunk_size + 1
-        for i in tqdm(range(0, len(unique_market_keys), chunk_size), desc="Exporting to Parquet", total=num_chunks):
-            chunk_keys = unique_market_keys[i : i + chunk_size]
+        num_chunks = (len(unique_event_keys) - 1) // chunk_size + 1
+        for i in tqdm(range(0, len(unique_event_keys), chunk_size), desc="Exporting to Parquet", total=num_chunks):
+            chunk_keys = unique_event_keys[i : i + chunk_size]
+            chunk_events = pd.DataFrame(chunk_keys, columns=["source", "event_id"])
+            chunk_markets = pd.merge(markets_df, chunk_events, on=["source", "event_id"], how="inner")
+            if chunk_markets.empty:
+                continue
+            market_keys = chunk_markets[["source", "market_id"]].values.tolist()
             
             # Build a query for this chunk of market IDs
             with self._get_conn() as conn:
                 conn.execute("CREATE TEMPORARY TABLE chunk_ids (source TEXT, market_id TEXT)")
-                conn.executemany("INSERT INTO chunk_ids VALUES (?, ?)", chunk_keys)
+                conn.executemany("INSERT INTO chunk_ids VALUES (?, ?)", market_keys)
                 
                 # OPTIMIZATION: Only select columns we need, skip raw_json
                 history_df = pd.read_sql("""
@@ -363,25 +380,251 @@ class CanonicalStore:
             }).reset_index().rename(columns={"belief_scalar": "belief"})
 
             # Merge with metadata subset
-            chunk_markets = markets_df[i : i + chunk_size]
             unified_chunk = pd.merge(chunk_markets, history_agg, on=["source", "market_id"], how="inner")
             
             if unified_chunk.empty:
                 continue
+            
+            # Aggregate to event-level rows
+            event_chunk = self._aggregate_events(unified_chunk)
+            if event_chunk.empty:
+                continue
+
+            # Normalize schema across chunks to avoid Parquet writer mismatches
+            event_chunk["end_time"] = pd.to_datetime(event_chunk["end_time"], errors="coerce", utc=True)
+            event_chunk["created_time"] = pd.to_datetime(event_chunk["created_time"], errors="coerce", utc=True)
+            string_cols = [
+                "source",
+                "event_id",
+                "title",
+                "description",
+                "url",
+                "market_type",
+                "options_json",
+                "status",
+                "resolved_value_json",
+                "metadata_json",
+            ]
+            for col in string_cols:
+                if col in event_chunk.columns:
+                    event_chunk[col] = event_chunk[col].astype("string")
 
             # Write to Parquet (Append mode) - OPTIMIZATION: Use compression
-            table = pa.Table.from_pandas(unified_chunk, preserve_index=False)
+            table = pa.Table.from_pandas(event_chunk, preserve_index=False)
             if writer is None:
                 writer = pq.ParquetWriter(parquet_file, table.schema, compression='snappy')
             writer.write_table(table)
             
-            logger.info(f"  Exported chunk {i//chunk_size + 1}/{(len(unique_market_keys)-1)//chunk_size + 1} ({len(unified_chunk)} markets)")
+            logger.info(f"  Exported chunk {i//chunk_size + 1}/{(len(unique_event_keys)-1)//chunk_size + 1} ({len(event_chunk)} events)")
 
         if writer:
             writer.close()
             logger.info(f"Partitioned Parquet build complete: {parquet_file}")
         else:
             logger.error("No data was exported to Parquet.")
+
+    def _aggregate_events(self, unified_df: pd.DataFrame) -> pd.DataFrame:
+        if unified_df.empty:
+            return unified_df
+
+        df = unified_df.copy()
+        df["event_id"] = df["event_id"].fillna(df["market_id"])
+
+        def _format_ts_list(values: List[Any]) -> List[Optional[str]]:
+            formatted = []
+            for ts in values or []:
+                if ts is None or (isinstance(ts, float) and pd.isna(ts)):
+                    formatted.append(None)
+                    continue
+                if isinstance(ts, pd.Timestamp):
+                    formatted.append(ts.isoformat())
+                elif isinstance(ts, datetime):
+                    formatted.append(ts.isoformat())
+                else:
+                    try:
+                        formatted.append(pd.to_datetime(ts).isoformat())
+                    except Exception:
+                        formatted.append(None)
+            return formatted
+
+        def _coerce_list(values: List[Any]) -> List[Optional[float]]:
+            coerced = []
+            for v in values or []:
+                if v is None or (isinstance(v, float) and pd.isna(v)):
+                    coerced.append(None)
+                else:
+                    try:
+                        coerced.append(float(v))
+                    except (TypeError, ValueError):
+                        coerced.append(None)
+            return coerced
+
+        def _load_json_value(value: Any) -> Any:
+            if value is None:
+                return None
+            if isinstance(value, str):
+                try:
+                    return json.loads(value)
+                except json.JSONDecodeError:
+                    return value
+            return value
+
+        def _parse_resolution(value: Any) -> Optional[float]:
+            if value is None:
+                return None
+            if isinstance(value, str):
+                lowered = value.strip().lower()
+                if lowered in ["yes", "true", "1"]:
+                    return 1.0
+                if lowered in ["no", "false", "0"]:
+                    return 0.0
+                try:
+                    return float(lowered)
+                except ValueError:
+                    return None
+            if isinstance(value, (int, float)):
+                return float(value)
+            return None
+
+        def _parse_answer_options(value: Any) -> List[str]:
+            if not value:
+                return ["NO", "YES"]
+            try:
+                parsed = json.loads(value) if isinstance(value, str) else value
+                if isinstance(parsed, list) and len(parsed) >= 2:
+                    return [str(parsed[0]), str(parsed[1])]
+            except json.JSONDecodeError:
+                pass
+            return ["NO", "YES"]
+
+        def _normalize_enum(value: Any) -> str:
+            if value is None:
+                return ""
+            if hasattr(value, "value"):
+                return str(value.value).lower()
+            raw = str(value).lower()
+            if raw.startswith("markettype."):
+                return raw.split(".", 1)[1]
+            if raw.startswith("marketstatus."):
+                return raw.split(".", 1)[1]
+            return raw
+
+        event_rows = []
+        for (source, event_id), group in df.groupby(["source", "event_id"], sort=False):
+            group = group.sort_values("market_id")
+
+            options = []
+            for _, row in group.iterrows():
+                options.append({
+                    "option_id": str(row.get("market_id")),
+                    "market_id": row.get("market_id"),
+                    "title": str(row.get("title") or row.get("market_id") or ""),
+                    "resolved_value_json": row.get("resolved_value_json"),
+                    "ts": _format_ts_list(row.get("ts")),
+                    "belief": _coerce_list(row.get("belief")),
+                    "bid": _coerce_list(row.get("bid")),
+                    "ask": _coerce_list(row.get("ask")),
+                    "volume": _coerce_list(row.get("volume")),
+                    "open_interest": _coerce_list(row.get("open_interest")),
+                    "metadata_json": row.get("metadata_json"),
+                    "url": row.get("url"),
+                    "is_synthetic": False
+                })
+
+            market_type = _normalize_enum(group.iloc[0].get("market_type"))
+            if len(group) == 1 and market_type == "binary":
+                base_option = options[0]
+                no_label, yes_label = _parse_answer_options(group.iloc[0].get("answer_options_json"))
+                base_option["option_id"] = yes_label
+                base_option["title"] = yes_label
+
+                yes_belief = base_option.get("belief") or []
+                no_belief = [
+                    None if b is None else max(0.0, min(1.0, 1.0 - b))
+                    for b in yes_belief
+                ]
+                base_resolved = _load_json_value(base_option.get("resolved_value_json"))
+                parsed_resolved = _parse_resolution(base_resolved)
+                if parsed_resolved is None:
+                    synthetic_resolved = None
+                elif parsed_resolved > 0.5:
+                    synthetic_resolved = json.dumps("no")
+                else:
+                    synthetic_resolved = json.dumps("yes")
+                synthetic_no = {
+                    "option_id": no_label,
+                    "market_id": base_option.get("market_id"),
+                    "title": no_label,
+                    "resolved_value_json": synthetic_resolved,
+                    "ts": list(base_option.get("ts") or []),
+                    "belief": no_belief,
+                    "bid": [None for _ in no_belief],
+                    "ask": [None for _ in no_belief],
+                    "volume": [None for _ in no_belief],
+                    "open_interest": [None for _ in no_belief],
+                    "metadata_json": base_option.get("metadata_json"),
+                    "url": base_option.get("url"),
+                    "is_synthetic": True,
+                    "derived_from_market_id": base_option.get("market_id")
+                }
+                options = [base_option, synthetic_no]
+
+            titles = [str(t) for t in group["title"].tolist() if isinstance(t, str) and t.strip()]
+            if not titles:
+                event_title = str(event_id)
+            elif len(set(titles)) == 1:
+                event_title = titles[0]
+            else:
+                event_title = str(event_id)
+
+            descriptions = [str(d) for d in group["description"].tolist() if isinstance(d, str) and d.strip()]
+            event_description = descriptions[0] if descriptions else ""
+
+            urls = [str(u) for u in group["url"].tolist() if isinstance(u, str) and u.strip()]
+            event_url = urls[0] if urls else ""
+
+            end_time = group["end_time"].max()
+            created_time = group["created_time"].min()
+
+            resolved_indices = []
+            for idx, option in enumerate(options):
+                raw_val = _load_json_value(option.get("resolved_value_json"))
+                parsed = _parse_resolution(raw_val)
+                if parsed is not None and parsed > 0.5:
+                    resolved_indices.append(idx)
+            resolved_yes_option_ids = [options[idx]["option_id"] for idx in resolved_indices]
+            resolved_option_id = resolved_yes_option_ids[0] if len(resolved_yes_option_ids) == 1 else None
+
+            statuses = [_normalize_enum(s) for s in group["status"].tolist() if s is not None]
+            if resolved_option_id is not None:
+                event_status = "resolved"
+            elif "open" in statuses:
+                event_status = "open"
+            elif statuses and all(s in {"closed", "resolved"} for s in statuses):
+                event_status = "closed"
+            else:
+                event_status = "unknown"
+
+            event_rows.append({
+                "source": source,
+                "event_id": event_id,
+                "title": event_title,
+                "description": event_description,
+                "url": event_url,
+                "market_type": "event",
+                "options_json": json.dumps(options),
+                "end_time": end_time,
+                "status": event_status,
+                "resolved_value_json": json.dumps(resolved_option_id) if resolved_option_id is not None else None,
+                "created_time": created_time,
+                "metadata_json": json.dumps({
+                    "option_count": len(options),
+                    "resolved_yes_count": len(resolved_yes_option_ids),
+                    "resolved_yes_option_ids": resolved_yes_option_ids
+                })
+            })
+
+        return pd.DataFrame(event_rows)
 
     def load_all_df(self) -> pd.DataFrame:
         """Return all stored canonical records in unified format as a Pandas DataFrame."""
@@ -402,7 +645,14 @@ class CanonicalStore:
             """, conn)
             
             if history_df.empty:
-                return markets_df
+                markets_df["ts"] = [[] for _ in range(len(markets_df))]
+                markets_df["belief"] = [[] for _ in range(len(markets_df))]
+                markets_df["volume"] = [[] for _ in range(len(markets_df))]
+                markets_df["open_interest"] = [[] for _ in range(len(markets_df))]
+                markets_df["bid"] = [[] for _ in range(len(markets_df))]
+                markets_df["ask"] = [[] for _ in range(len(markets_df))]
+                markets_df["event_id"] = markets_df["event_id"].fillna(markets_df["market_id"])
+                return self._aggregate_events(markets_df)
 
             # OPTIMIZATION: Faster datetime conversion with specified format
             logger.info("Converting timestamps to datetime...")
@@ -434,8 +684,9 @@ class CanonicalStore:
             logger.info("Finalizing field types...")
             unified_df["end_time"] = pd.to_datetime(unified_df["end_time"], errors='coerce')
             unified_df["created_time"] = pd.to_datetime(unified_df["created_time"], errors='coerce')
-            
-            return unified_df
+            unified_df["event_id"] = unified_df["event_id"].fillna(unified_df["market_id"])
+
+            return self._aggregate_events(unified_df)
 
 def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, kalshi_ticker: Optional[str] = None, 
                           start_date: Optional[date] = None, end_date: Optional[date] = None,
@@ -459,7 +710,7 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
     if kalshi_ticker:
         # Single ticker mode (mostly for debugging)
         k_markets = kalshi_grabber.fetch_markets(limit=1, ticker=kalshi_ticker, use_cache=use_cache)
-        metadata_batch = {m["ticker"]: map_kalshi_market(m).model_dump(mode='json') for m in k_markets}
+        metadata_batch = {m["ticker"]: map_kalshi_market(m) for m in k_markets}
         store.save_batch("kalshi", metadata_batch, {})
     elif start_date and end_date:
         # Get list of already processed dates to skip them in the scan
@@ -531,7 +782,7 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
                 for m in new_markets:
                     try:
                         record = map_kalshi_market(m)
-                        api_metadata_batch[m["ticker"]] = record.model_dump(mode='json')
+                        api_metadata_batch[m["ticker"]] = record
                         found_tickers.add(m["ticker"])
                     except Exception:
                         continue
@@ -583,10 +834,18 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
         logger.info("Metaculus limit is 0, skipping Metaculus collection.")
     else:
         metaculus_grabber = MetaculusGrabber()
-        
+        skip_metaculus = False
+
         # We start from offset 0 but use smart status-aware skipping to "move on"
-        posts = metaculus_grabber.fetch_posts(limit=actual_metaculus_limit, use_cache=use_cache)
-        
+        try:
+            posts = metaculus_grabber.fetch_posts(limit=actual_metaculus_limit, use_cache=use_cache)
+        except requests.exceptions.RequestException as exc:
+            logger.warning(
+                f"Metaculus fetch failed; skipping Metaculus for this build. Error: {exc}"
+            )
+            skip_metaculus = True
+            posts = []
+
         # Pre-calculate window boundaries for filtering
         window_start = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=None) if start_date else None
         window_end = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=None) if end_date else None
@@ -706,7 +965,7 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
                     
                     # Only save if we have points in the window, or if no window was specified
                     if ts_points or not (start_date and end_date):
-                        metaculus_market_records[q_id] = record.model_dump(mode='json')
+                        metaculus_market_records[q_id] = record
                         metaculus_timeseries_map[q_id] = ts_points
                         logger.debug(f"Prepared Metaculus question {q_id}")
                 
@@ -725,14 +984,19 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
             except Exception as e:
                 logger.error(f"Error processing Metaculus post {p_id}: {e}")
 
-        # Log summary of posts without timestamps (for monitoring)
-        if posts_without_timestamp > 0:
-            logger.info(f"Encountered {posts_without_timestamp} Metaculus posts without usable timestamps (skipped optimization for these)")
+        if skip_metaculus:
+            logger.info("Metaculus collection skipped due to request failure.")
+        else:
+            # Log summary of posts without timestamps (for monitoring)
+            if posts_without_timestamp > 0:
+                logger.info(
+                    f"Encountered {posts_without_timestamp} Metaculus posts without usable timestamps (skipped optimization for these)"
+                )
 
-        # Final batch save for Metaculus
-        if metaculus_market_records:
-            logger.info(f"Final batch saving {len(metaculus_market_records)} Metaculus markets...")
-            store.save_batch("metaculus", metaculus_market_records, metaculus_timeseries_map)
+            # Final batch save for Metaculus
+            if metaculus_market_records:
+                logger.info(f"Final batch saving {len(metaculus_market_records)} Metaculus markets...")
+                store.save_batch("metaculus", metaculus_market_records, metaculus_timeseries_map)
 
     # 4. Build Final Unified Dataset
     version = datetime.now().strftime("%Y%m%d_%H%M")
@@ -747,7 +1011,7 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
         "version": version,
         "dataset_name": name if name else "unified",
         "created_at": datetime.now().isoformat(),
-        "row_count": len(store.get_existing_market_ids("kalshi")) + len(store.get_existing_market_ids("metaculus"))
+        "row_count": len(store.get_existing_event_ids("kalshi")) + len(store.get_existing_event_ids("metaculus"))
     }
     with open(output_dir / "manifest.json", "w") as f:
         json.dump(manifest, f, indent=2)
@@ -888,4 +1152,12 @@ if __name__ == "__main__":
 #     rules_secondary). S3 pre-population sets description to empty string (no noisy placeholders). 
 #     API enrichment overwrites description with natural concatenation of available fields. Enrichment 
 #     query checks for empty descriptions to identify markets needing API metadata.
-# 28. History Gaps: S3 bulk files lack bid/ask and only provide daily snapshots, so null bid/ask and short history are expected for some markets.
+# 28. Scalar Absence: Exhaustive API/S3 scans (Feb-Mar 2025) found 0 scalar markets. payout_type mapping 
+#     to "numeric" exists but is never triggered in current data (100% binary). If scalars are added, 
+#     they may not show up in S3 discovery and might need a separate API-based discovery path.
+# 29. History Gaps: S3 bulk files lack bid/ask and only provide daily snapshots, so null bid/ask and short history are expected for some markets.
+# 30. Metaculus Resilience: If Metaculus fetch fails after retries, skip Metaculus and continue Kalshi-only export.
+# 31. Parquet Schema Consistency: Normalize tz-aware timestamps and force string dtypes per chunk
+#     before writing to avoid schema mismatches across partitions.
+# 31. Resolution Semantics: Event-level status should be "resolved" only when exactly one option resolves YES;
+#     otherwise set status based on open/closed signals and keep resolved_value_json null for auditability.
