@@ -36,13 +36,6 @@ Prerequisites: Python 3.13+, `uv` (package manager).
 - Alternative: `uv pip install -e .` (if `uv sync` doesn't work)
 - Ensure `uv.lock` file exists and is up to date
 
-**Metaculus API note**:
-- Metaculus endpoints are rate-limited and can fail after retries. If you only need Kalshi
-  for a build, set `--metaculus-limit 0` to skip Metaculus collection and still produce
-  a valid unified dataset.
-- If Metaculus requests fail after retries during a build, the pipeline logs a warning and
-  automatically skips Metaculus while continuing with Kalshi-only export.
-
 --------------------------------------------------------------------------------
 2. DATA SCHEMA
 --------------------------------------------------------------------------------
@@ -52,11 +45,6 @@ Parquet format.
 
 A. EventRecord (The "Static" Info)
 Defined in `src/common/schema.py`.
-
-*Optimization Note*: The pipeline uses Kalshi's **public S3 bucket** (`kalshi-public-docs.s3.amazonaws.com/reporting`) 
-to download bulk historical market data files. This is Kalshi's publicly available data repository - no credentials needed. 
-Metadata is then enriched in batches of 100 via the `/markets?tickers=...` 
-API endpoint after discovering unique tickers from the S3 bulk files. This provides a ~100x speedup over one-by-one enrichment.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -72,23 +60,8 @@ API endpoint after discovering unique tickers from the S3 bulk files. This provi
 | resolved_value_json| str (JSON) | Resolved option_id if uniquely resolved. |
 | metadata_json | str (JSON) | Event-level metadata (derived). |
 
-Kalshi normalization notes:
-- Market-level metadata is still collected during ingestion, but the final dataset is event-level.
-- `options_json` contains each option's title, market_id, and history lists.
-- `resolved_value_json` on options is normalized to "yes"/"no" for binary and numeric value for scalar when available.
-- `status="resolved"` does not imply a unique YES option. For threshold/ladder markets, multiple YES or zero YES outcomes are possible.
-- The resolution task treats multi-YES as a uniform distribution across resolved options and skips zero-YES cases.
-- `description` is built from API metadata fields: prefers `subtitle`, then concatenates `rules_primary` and `rules_secondary` if present, otherwise falls back to `title` or empty string.
-- **Scalar/Numeric Markets**: While Kalshi docs mention a `scalar` market type, an exhaustive scan of the API and S3 bulk data (as of early 2025) found 0% scalar markets. The pipeline currently maps `payout_type` from S3 and `market_type` from API to `numeric` for scalars, but in practice, 100% of data is binary. If scalars are introduced later, they will likely require non-S3 discovery/history paths.
-
 B. Option TimeSeries (The "Belief" History)
 Stored inside `options_json` as per-option lists.
-
-Kalshi grouping note:
-- Kalshi UI "answer options" (e.g., temperature ranges) are represented as separate binary markets.
-- In the dataset, these are already aggregated into a single event row keyed by `event_id`.
-- Each option inside `options_json` corresponds to one Kalshi market and includes its history lists.
-- Binary events synthesize a NO option by complementing the YES belief series.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -146,15 +119,7 @@ B. Adding a New Task
 4. **Register**: Add it to `TASK_REGISTRY` in `runner/runner.py`.
 
 C. Experiment Artifacts
-All outputs are stored in `data/outputs/` (ignored by git), organized by model configuration and run:
-`data/outputs/<model>_<hash>/run_<timestamp>_<name>/`
-
-Sub-directories within each run:
-- `model/`: Serialized model weights (`.joblib`, `.pt`).
-- `logs/`: Execution logs and `run.log`.
-- `plots/`: Visualizations and performance graphs.
-- `metrics/`: Structured JSON metrics (`metrics.json`) and run spec (`spec.json`).
-- `*.txt`: A run-info file with description and metadata.
+All outputs are stored in `data/outputs/` (ignored by git). See `runner/results_db.py` for detailed output structure and indexing logic.
 
 --------------------------------------------------------------------------------
 5. REPOSITORY STRUCTURE

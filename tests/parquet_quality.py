@@ -296,7 +296,7 @@ def _validate_event_schema(df: pd.DataFrame) -> dict:
                 errors.append(f"{col}_null_count={nulls}")
         if rules.get("dtype") == "datetime":
             parsed = pd.to_datetime(series, errors="coerce", utc=True)
-            invalid = int(parsed.isna().sum())
+            invalid = int((series.notna() & parsed.isna()).sum())
             if invalid > 0:
                 errors.append(f"{col}_invalid_datetime={invalid}")
         allowed = rules.get("allowed")
@@ -590,3 +590,4 @@ if __name__ == "__main__":
 # --- LESSONS LEARNED ---
 # 1. Sample list-heavy columns to keep audits fast on large datasets.
 # 2. options_json audits catch misaligned histories early.
+# 3. Datetime validation should ignore nulls for nullable fields.

@@ -8,6 +8,7 @@ from src.common.logging import logger
 class KalshiGrabber:
     def __init__(self):
         self.client = get_kalshi_client()
+        self._candlestick_max_tickers = 100
 
     def fetch_markets(self, limit: int = 1000, status: str = "settled", use_cache: bool = True, ticker: Optional[str] = None, tickers: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Fetch list of markets."""
@@ -75,6 +76,36 @@ class KalshiGrabber:
         data = response.json().get("market", {})
         return data
 
+    def fetch_market_candlesticks_batch(
+        self,
+        market_tickers: List[str],
+        start_ts: int,
+        end_ts: int,
+        period_interval: int = 1,
+        include_latest_before_start: bool = False
+    ) -> List[Dict[str, Any]]:
+        """Fetch candlesticks for multiple markets (batch endpoint)."""
+        if not market_tickers:
+            return []
+
+        markets = []
+        for i in range(0, len(market_tickers), self._candlestick_max_tickers):
+            batch = market_tickers[i:i + self._candlestick_max_tickers]
+            params = {
+                "market_tickers": ",".join(batch),
+                "start_ts": int(start_ts),
+                "end_ts": int(end_ts),
+                "period_interval": int(period_interval),
+            }
+            if include_latest_before_start:
+                params["include_latest_before_start"] = "true"
+
+            response = self.client.get("/markets/candlesticks", params=params)
+            payload = response.json()
+            markets.extend(payload.get("markets", []))
+
+        return markets
+
 # --- LESSONS LEARNED ---
 # 1. Hybrid Approach: Using API for metadata and Bulk S3 for historical time-series 
 #    is the most efficient way to scale Kalshi data collection.
@@ -106,4 +137,13 @@ class KalshiGrabber:
 # 12. Concurrent Requests: HttpClient uses max_concurrency=20 and delay=0.055s (18.2 req/s) 
 #     to stay under 20 req/s limit. Despite this, 429s occur due to network jitter and 
 #     burst patterns. The semaphore+delay combination helps but doesn't eliminate 429s entirely.
+# 13. Candlestick API: Batch candlesticks allow 100 tickers per request and up to 10k candles
+#     total per response; use time windowing or smaller batches to avoid 400s.
+# 14. Candlestick Availability: Jan 2024 historical range returned empty candlestick arrays
+#     across batch and series endpoints, even with auth. Treat as unverified for backfill.
+# 15. Bid/Ask Nullability: S3 bulk files do not include bid/ask fields. The optional 
+#     candlestick backfill currently returns empty data for Jan 2024, so bid/ask remain null 
+#     until a verified historical candlestick source is confirmed.
+# 16. Do/Don't: Do not fill bid/ask from metadata snapshots unless provenance is explicit.
+#     Don't mix snapshot bid/ask with historical series without clear labeling.
 

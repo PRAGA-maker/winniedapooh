@@ -377,3 +377,12 @@ class ResultsDatabase:
 # 5. Indices on method, task, timestamp make common queries very fast (<1ms typically).
 # 6. Using run_id as "{method_config}/run_timestamp_name" creates a natural hierarchy
 #    that matches the filesystem structure and groups related runs together.
+# 7. Output Directory Structure: All experiment outputs are stored in data/outputs/ 
+#    (ignored by git), organized by model configuration and run:
+#    `data/outputs/<model>_<hash>/run_<timestamp>_<name>/`
+#    Sub-directories within each run:
+#    - `model/`: Serialized model weights (`.joblib`, `.pt`).
+#    - `logs/`: Execution logs and `run.log`.
+#    - `plots/`: Visualizations and performance graphs.
+#    - `metrics/`: Structured JSON metrics (`metrics.json`) and run spec (`spec.json`).
+#    - `*.txt`: A run-info file with description and metadata.

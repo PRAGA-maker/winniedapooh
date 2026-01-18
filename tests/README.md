@@ -54,6 +54,12 @@ uv run python tests/run_tests.py
 - Parquet export determinism
 - Checkpoint reprocessing prevention
 
+### Kalshi Bid/Ask Backfill Check (`test_kalshi_bid_ask_backfill.py`)
+Optional test that validates non-null bid/ask ratios when a backfilled dataset exists.
+Requires `KALSHI_BIDASK_DATASET` to point at a unified parquet file.
+Run:
+`KALSHI_BIDASK_DATASET=path/to/data.parquet uv run pytest tests/test_kalshi_bid_ask_backfill.py -v`
+
 ## Test Utilities
 
 ### `conftest.py`

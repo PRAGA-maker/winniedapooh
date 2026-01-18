@@ -377,4 +377,10 @@ class KalshiBulkGrabber:
 # 13. Payout Type & Scalar Absence: S3 payout_type is captured but 100% of scanned records (Feb-Mar 2025) 
 #     are "Binary Option". No scalar payout types were found. Heads up: if scalars are introduced, 
 #     the bulk S3 reports may skip them or use a different schema.
+# 14. Bulk Ingestion Architecture: The pipeline uses Kalshi's public S3 bucket 
+#     (kalshi-public-docs.s3.amazonaws.com/reporting) to download bulk historical market data files. 
+#     This is Kalshi's publicly available data repository - no credentials needed. 
+#     Metadata is then enriched in batches of 100 via the `/markets?tickers=...` 
+#     API endpoint after discovering unique tickers from the S3 bulk files. 
+#     This provides a ~100x speedup over one-by-one enrichment.
 

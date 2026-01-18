@@ -12,3 +12,4 @@ data/outputs/
 kalshi_key.pem
 *.pem
 *.db
+/tests/parquet_quality_outputs/

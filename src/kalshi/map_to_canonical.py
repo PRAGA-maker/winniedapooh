@@ -1,6 +1,6 @@
 import json
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from src.common.schema import TimeSeriesPoint, MarketType, MarketStatus
 
 
@@ -156,7 +156,11 @@ def map_kalshi_market(raw: Dict[str, Any]) -> Dict[str, Any]:
     resolved_value = _normalize_kalshi_resolution(raw, market_type)
     
     # End time
-    end_time_str = raw.get("expiration_time")
+    end_time_str = (
+        raw.get("expected_expiration_time")
+        or raw.get("expiration_time")
+        or raw.get("close_time")
+    )
     if end_time_str:
         end_time = datetime.fromisoformat(end_time_str.replace("Z", "+00:00"))
     else:
@@ -221,6 +225,43 @@ def map_kalshi_candle(ticker: str, candle: Dict[str, Any]) -> TimeSeriesPoint:
         raw_json=json.dumps(candle)
     )
 
+def _extract_bid_ask_dollars(side: Optional[Dict[str, Any]]) -> Optional[float]:
+    if not side:
+        return None
+    for key in ("close_dollars", "open_dollars", "high_dollars", "low_dollars"):
+        value = side.get(key)
+        if value is not None:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return None
+    return None
+
+def map_kalshi_candle_bid_ask(
+    ticker: str,
+    candle: Dict[str, Any],
+    ts_override: Optional[datetime] = None
+) -> TimeSeriesPoint:
+    """Map raw Kalshi candlestick to TimeSeriesPoint with bid/ask."""
+    price = candle.get("price", {})
+    mean_price = price.get("mean_dollars")
+    ts = ts_override or datetime.fromtimestamp(candle["end_period_ts"])
+
+    bid = _extract_bid_ask_dollars(candle.get("yes_bid"))
+    ask = _extract_bid_ask_dollars(candle.get("yes_ask"))
+
+    return TimeSeriesPoint(
+        source="kalshi",
+        market_id=ticker,
+        ts=ts,
+        belief_scalar=float(mean_price) if mean_price is not None else None,
+        bid=bid,
+        ask=ask,
+        volume=float(candle.get("volume", 0)),
+        open_interest=float(candle.get("open_interest", 0)),
+        raw_json=json.dumps(candle)
+    )
+
 # --- LESSONS LEARNED ---
 # 1. Price Scalar: 'yes_price_dollars' is the cleanest mapping for binary belief.
 # 2. Timestamps: Kalshi uses ISO strings with 'Z' for UTC. Standardize early.
@@ -235,4 +276,23 @@ def map_kalshi_candle(ticker: str, candle: Dict[str, Any]) -> TimeSeriesPoint:
 # 7. Scalar Absence: Exhaustive API/S3 scans (Feb-Mar 2025) confirm 0% scalar markets exist in practice. 
 #    The mapping logic for MarketType.NUMERIC is placeholder/spec-compliant only. If scalars appear, 
 #    verify if S3 reporting includes them or if API-only history (candles) is required.
+# 8. End Time Source: Prefer expected_expiration_time over deprecated expiration_time; fall back if missing.
+# 8. Candlestick Bid/Ask: Use yes_bid/yes_ask dollars fields; prefer close_dollars then open_dollars
+#    to align bid/ask to the candle boundary while keeping fallbacks for sparse candles.
+# 9. Market Status & Resolution: Treat finalized/determined/settled as resolved for canonical status.
+#    `status="resolved"` does not imply a unique YES option. For threshold/ladder markets, 
+#    multiple YES or zero YES outcomes are possible. The resolution task treats multi-YES 
+#    as a uniform distribution across resolved options and skips zero-YES cases.
+# 10. Scalar/Numeric Markets: While Kalshi docs mention a `scalar` market type, an exhaustive 
+#     scan of the API and S3 bulk data (as of early 2025) found 0% scalar markets. 
+#     The pipeline currently maps `payout_type` from S3 and `market_type` from API to 
+#     `numeric` for scalars, but in practice, 100% of data is binary. If scalars are 
+#     introduced later, they will likely require non-S3 discovery/history paths.
+# 11. Grouping & Synthesis: Kalshi UI "answer options" (e.g., temperature ranges) are 
+#     represented as separate binary markets. In the dataset, these are already aggregated 
+#     into a single event row keyed by `event_id`. Each option inside `options_json` 
+#     corresponds to one Kalshi market and includes its history lists. Binary events 
+#     synthesize a NO option by complementing the YES belief series.
+# 12. Experiment Note: Jan 2024 candlestick calls returned empty arrays, so bid/ask mapping
+#     cannot be validated on historical data yet.
 

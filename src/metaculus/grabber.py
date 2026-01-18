@@ -59,4 +59,19 @@ class MetaculusGrabber:
 # The rotation system (in http.py) automatically switches keys on rate limits (429) and preemptively
 # rotates at 90% usage threshold. With 2 keys, expect ~2x speedup (99.7% efficiency).
 # See http.py LESSONS LEARNED section for detailed implementation notes.
+#
+# METACULUS API NOTES:
+# 1. Rate Limiting: Metaculus endpoints are rate-limited and can fail after retries. 
+#    If you only need Kalshi for a build, set `--metaculus-limit 0` to skip Metaculus 
+#    collection and still produce a valid unified dataset.
+# 2. Failure Handling: If Metaculus requests fail after retries during a build, 
+#    the pipeline logs a warning and automatically skips Metaculus while continuing 
+#    with Kalshi-only export.
+# 3. History Persistence: Date-window builds can yield Metaculus markets with empty 
+#    histories; the pipeline still persists metadata so source coverage is visible 
+#    even when no in-window points exist.
+# 4. Window Filtering: Window filtering is day-based (matching Kalshi): if 
+#    --start 2025-01-01 --end 2025-01-05, all Metaculus aggregation points with 
+#    dates in [2025-01-01, 2025-01-05] are included, regardless of exact timestamp 
+#    within those days. This ensures consistent edge case handling across sources.
 

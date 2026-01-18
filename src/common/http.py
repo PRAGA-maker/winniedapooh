@@ -345,7 +345,7 @@ def get_metaculus_client():
 #    Benchmark results: 2 keys = 1.99x speedup (99.7% efficiency). Linear scaling confirmed.
 # 5. Metaculus Key Rotation Implementation:
 #    - Preemptive rotation at 90% threshold (900/1000 requests) prevents hitting limits.
-#    - On 429 response, immediately rotate to next key and retry (no backoff needed).
+#    - On 429 response, rotate to next key and apply backoff before retrying.
 #    - Delay calculation: base_delay / num_keys (3.6s / 2 = 1.8s with 2 keys).
 #    - Usage tracking: rolling 1-hour window per key with automatic reset.
 #    - Thread-safe: All operations protected with locks (get_current_token, rotate_to_next_key, 

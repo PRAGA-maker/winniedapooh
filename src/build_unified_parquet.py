@@ -5,7 +5,7 @@ import json
 import sqlite3
 import requests
 import pandas as pd
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, time
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
@@ -15,7 +15,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from src.kalshi.grabber import KalshiGrabber
 from src.kalshi.bulk_grabber import KalshiBulkGrabber
-from src.kalshi.map_to_canonical import map_kalshi_market, map_kalshi_trade, build_kalshi_url
+from src.kalshi.map_to_canonical import map_kalshi_market, map_kalshi_trade, map_kalshi_candle_bid_ask, build_kalshi_url
 from src.metaculus.grabber import MetaculusGrabber
 from src.metaculus.map_to_canonical import map_metaculus_question, map_metaculus_history_point
 from src.common.parquet import write_parquet_dataset
@@ -52,7 +52,7 @@ def process_kalshi_day(target_date: date, allowed_tickers: Optional[set] = None)
     Worker function to process a single day of Kalshi bulk data.
     
     NOTE: Accumulates all points in memory before returning. For busy days with 100K+ records,
-    this can be 50-100MB per worker. With 22 workers, total accumulation can reach 1-2GB+.
+    this can be 50-100MB per worker. With many workers, total accumulation can reach several GBs.
     For very large datasets (18M+ markets), consider batching DB inserts within worker instead.
     """
     bulk_grabber = KalshiBulkGrabber()
@@ -296,6 +296,30 @@ class CanonicalStore:
             if history_rows:
                 conn.executemany(f"INSERT OR IGNORE INTO history ({', '.join(h_fields)}) VALUES ({h_placeholders})", history_rows)
 
+    def update_history_bid_ask_batch(self, source: str, updates: List[Dict[str, Any]]):
+        """Update bid/ask values for existing history rows."""
+        if not updates:
+            return
+        with self._get_conn() as conn:
+            rows = []
+            for item in updates:
+                rows.append((
+                    item.get("bid"),
+                    item.get("ask"),
+                    source,
+                    item.get("market_id"),
+                    item.get("ts"),
+                ))
+            conn.executemany(
+                """
+                UPDATE history
+                SET bid = ?, ask = ?
+                WHERE source = ? AND market_id = ? AND ts = ?
+                  AND (bid IS NULL OR ask IS NULL)
+                """,
+                rows
+            )
+
     def add_history_point(self, source: str, market_id: str, point: Dict[str, Any], market_record_fallback: Optional[Dict[str, Any]] = None):
         """Append a single history point, creating the market if needed."""
         self.add_history_points_batch(source, [{"market_id": market_id, "point": point, "market_record": market_record_fallback}])
@@ -380,7 +404,14 @@ class CanonicalStore:
             }).reset_index().rename(columns={"belief_scalar": "belief"})
 
             # Merge with metadata subset
-            unified_chunk = pd.merge(chunk_markets, history_agg, on=["source", "market_id"], how="inner")
+            unified_chunk = pd.merge(chunk_markets, history_agg, on=["source", "market_id"], how="left")
+
+            list_cols = ["ts", "belief", "volume", "open_interest", "bid", "ask"]
+            for col in list_cols:
+                if col in unified_chunk.columns:
+                    unified_chunk[col] = unified_chunk[col].apply(
+                        lambda v: v if isinstance(v, (list, tuple)) else []
+                    )
             
             if unified_chunk.empty:
                 continue
@@ -431,6 +462,8 @@ class CanonicalStore:
         df["event_id"] = df["event_id"].fillna(df["market_id"])
 
         def _format_ts_list(values: List[Any]) -> List[Optional[str]]:
+            if not isinstance(values, (list, tuple)):
+                return []
             formatted = []
             for ts in values or []:
                 if ts is None or (isinstance(ts, float) and pd.isna(ts)):
@@ -448,6 +481,8 @@ class CanonicalStore:
             return formatted
 
         def _coerce_list(values: List[Any]) -> List[Optional[float]]:
+            if not isinstance(values, (list, tuple)):
+                return []
             coerced = []
             for v in values or []:
                 if v is None or (isinstance(v, float) and pd.isna(v)):
@@ -690,8 +725,13 @@ class CanonicalStore:
 
 def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, kalshi_ticker: Optional[str] = None, 
                           start_date: Optional[date] = None, end_date: Optional[date] = None,
-                          metaculus_limit: Optional[int] = None, name: Optional[str] = None):
-    logger.info(f"Starting unified dataset build (limit={limit}, metaculus_limit={metaculus_limit}, name={name})...")
+                          metaculus_limit: Optional[int] = None, name: Optional[str] = None,
+                          kalshi_bid_ask_backfill: bool = False):
+    logger.info(
+        "Starting unified dataset build "
+        f"(limit={limit}, metaculus_limit={metaculus_limit}, name={name}, "
+        f"kalshi_bid_ask_backfill={kalshi_bid_ask_backfill})..."
+    )
     
     store = CanonicalStore(name=name)
     api_calls_count = 0
@@ -699,9 +739,15 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
     
     # Use more aggressive parallelism for S3 scanning (I/O bound)
     # For history processing we'll use fewer (CPU bound)
-    scan_workers = max(1, (os.cpu_count() or 16))  # Use all cores for I/O
-    process_workers = max(1, (os.cpu_count() or 16) - 2)  # Leave 2 cores free for processing
-    logger.info(f"Using {scan_workers} workers for S3 scanning, {process_workers} for processing.")
+    # Use a formula that scales better with high core counts and avoids memory issues
+    num_cores = os.cpu_count() or 1
+    # User suggested: n cores - (10% floor to int n cores)
+    # We also ensure at least 2 cores are free to keep the system responsive
+    reserved_cores = max(2, int(num_cores * 0.1))
+    
+    scan_workers = max(1, num_cores - 1)  # I/O bound, can use more
+    process_workers = max(1, num_cores - reserved_cores)
+    logger.info(f"Using {scan_workers} workers for S3 scanning, {process_workers} for processing (cores={num_cores}, reserved={reserved_cores}).")
 
     # 1. Kalshi Pipeline (Optimized)
     kalshi_grabber = KalshiGrabber()
@@ -824,6 +870,75 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
     else:
         # Fallback to old behavior if no dates provided (unlikely given user query)
         logger.warning("No dates provided, skipping Kalshi history collection.")
+
+    if kalshi_bid_ask_backfill:
+        if not (start_date and end_date):
+            logger.warning("Kalshi bid/ask backfill requires start/end dates. Skipping.")
+        else:
+            logger.info("Starting Kalshi bid/ask backfill from candlesticks...")
+            period_interval = 1
+
+            kalshi_tickers = store.get_existing_market_ids("kalshi")
+            if not kalshi_tickers:
+                logger.warning("No Kalshi markets found for bid/ask backfill.")
+            else:
+                total_requests = 0
+                total_updates = 0
+                candlestick_updates_found = False
+                current_day = start_date
+                batch_size = 100
+                while current_day <= end_date:
+                    day_end = datetime.combine(current_day, time(23, 59))
+                    start_ts = int(day_end.timestamp())
+                    end_ts = int(day_end.timestamp())
+
+                    logger.info(
+                        f"  Candlestick day {current_day.isoformat()} "
+                        f"(tickers_per_request={batch_size})"
+                    )
+
+                    for i in range(0, len(kalshi_tickers), batch_size):
+                        tickers_batch = kalshi_tickers[i:i + batch_size]
+                        markets = kalshi_grabber.fetch_market_candlesticks_batch(
+                            tickers_batch,
+                            start_ts,
+                            end_ts,
+                            period_interval=period_interval
+                        )
+                        total_requests += 1
+                        updates = []
+
+                        for market in markets:
+                            market_id = market.get("market_ticker")
+                            for candle in market.get("candlesticks", []):
+                                end_period_ts = candle.get("end_period_ts")
+                                if not end_period_ts:
+                                    continue
+                                end_dt = datetime.utcfromtimestamp(end_period_ts)
+                                if end_dt.date() != current_day:
+                                    continue
+                                ts_override = datetime.combine(end_dt.date(), time(23, 59, 59))
+                                point = map_kalshi_candle_bid_ask(market_id, candle, ts_override=ts_override)
+                                if point.bid is None and point.ask is None:
+                                    continue
+                                updates.append({
+                                    "market_id": market_id,
+                                    "ts": point.ts.isoformat(),
+                                    "bid": point.bid,
+                                    "ask": point.ask,
+                                })
+
+                        if updates:
+                            store.update_history_bid_ask_batch("kalshi", updates)
+                            total_updates += len(updates)
+                            candlestick_updates_found = True
+
+                    current_day += timedelta(days=1)
+
+                logger.info(
+                    "Kalshi bid/ask backfill complete: "
+                    f"{total_updates} rows updated across ~{total_requests} API calls."
+                )
 
     # 2. Fetch Metaculus Data (Sequential due to rate limits)
     # Use the specific limit for Metaculus if provided, else use the general limit
@@ -959,18 +1074,18 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
                     ts_points = []
                     for pt in points:
                         ts_point = map_metaculus_history_point(q_id, pt)
-                        # Filter by window if provided
-                        if window_start and ts_point.ts.replace(tzinfo=None) < window_start:
+                        # Filter by window DATE if provided (matching Kalshi's day-based approach)
+                        point_date = ts_point.ts.date()
+                        if start_date and point_date < start_date:
                             continue
-                        if window_end and ts_point.ts.replace(tzinfo=None) > window_end:
+                        if end_date and point_date > end_date:
                             continue
                         ts_points.append(ts_point.model_dump(mode='json'))
                     
-                    # Only save if we have points in the window, or if no window was specified
-                    if ts_points or not (start_date and end_date):
-                        metaculus_market_records[q_id] = record
-                        metaculus_timeseries_map[q_id] = ts_points
-                        logger.debug(f"Prepared Metaculus question {q_id}")
+                    # Save metadata even if there are no points in the window
+                    metaculus_market_records[q_id] = record
+                    metaculus_timeseries_map[q_id] = ts_points
+                    logger.debug(f"Prepared Metaculus question {q_id}")
                 
                 logger.info(f"Processed Metaculus post {p_id} ({len(sub_qs)} questions)")
                 
@@ -1095,12 +1210,13 @@ if __name__ == "__main__":
 #     calls). Then selectively enrich only active/open markets via API. This ensures DB has 
 #     complete market list even if API enrichment fails. Pre-population uses S3 status to set 
 #     canonical status (finalized/settled→resolved, closed→closed, else→unknown).
-# 16. History Processing: ProcessPoolExecutor with 22 workers processes days in parallel. Each 
+# 16. History Processing: ProcessPoolExecutor with n_cores - 10% workers processes days in parallel. Each 
 #     worker filters by active_tickers set (passed as argument) to skip inactive markets early. 
 #     Processing time: ~2-3s per day for normal days, but busy days with 100K+ records can take 
 #     30-60s. Memory per worker: ~50-100MB for busy days (all points accumulated before DB insert). 
-#     Total: ~1-2GB for 22 workers processing busy days simultaneously. This is manageable for most 
-#     systems but could cause OOM on limited RAM. Consider reducing process_workers if memory is tight.
+#     Total memory usage can be significant for many workers processing busy days simultaneously. 
+#     This is manageable for most systems but could cause OOM or paging file errors on limited RAM 
+#     (especially Windows). Consider reducing process_workers further if memory is tight.
 #     Large-scale warning: For 18M+ markets over years, memory accumulation in process_kalshi_day 
 #     (all points in memory before returning) is a known limitation. Previous implementations used 
 #     "SQL being read during streaming" hacks to flush incrementally - current code doesn't do this.
@@ -1164,5 +1280,22 @@ if __name__ == "__main__":
 #     before writing to avoid schema mismatches across partitions.
 # 32. Metaculus Latest Fallback: If aggregation history is empty, fall back to the latest
 #     snapshot so Metaculus markets are still represented in the unified dataset.
+# 33. Window Filtering: Persist Metaculus market metadata even when no history points fall
+#     inside the date window to avoid silent source dropouts.
+# 34. Empty Histories: Use left-join when merging history so markets with empty histories
+#     still appear in the event-level dataset (with empty lists).
+# 35. Date-Based Window Filtering: Metaculus history filtering uses date-based comparison
+#     (matching Kalshi's day-based S3 processing) rather than datetime comparison. This ensures
+#     consistent edge case handling across sources - if --start 2025-01-01 --end 2025-01-05,
+#     all points with dates in that range are included regardless of exact timestamp.
+# 36. Bid/Ask Backfill: Candlestick API returned empty arrays for Jan 2024 even with auth.
+#     We do not fall back to metadata snapshots to avoid mixing sources. Expect null bid/ask
+#     until a verified historical candlestick path is confirmed.
+# 37. Candlestick Experiment Results (Jan 2024): Batch + series endpoints returned zero candles
+#     across 1/60/1440 intervals for active tickers. This caused 0 bid/ask updates after
+#     backfill. If a future source is found, add a provenance note before populating.
 # 31. Resolution Semantics: Event-level status should be "resolved" only when exactly one option resolves YES;
 #     otherwise set status based on open/closed signals and keep resolved_value_json null for auditability.
+# 33. Bid/Ask Backfill: Optional candlestick backfill updates daily history rows using the
+#     1-minute API data at the last candle of each day to align with S3 EOD timestamps.
+#     This keeps storage bounded while still sourcing bid/ask from the minimum interval.

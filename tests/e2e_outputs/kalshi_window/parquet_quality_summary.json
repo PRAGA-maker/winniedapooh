@@ -1,0 +1,440 @@
+{
+  "row_count": 61130,
+  "columns": {
+    "source": {
+      "dtype": "string",
+      "null_count": 0,
+      "null_pct": 0.0,
+      "value_counts_top20": {
+        "kalshi": 61130
+      }
+    },
+    "event_id": {
+      "dtype": "string",
+      "null_count": 0,
+      "null_pct": 0.0,
+      "unique_count": 61130
+    },
+    "title": {
+      "dtype": "string",
+      "null_count": 0,
+      "null_pct": 0.0
+    },
+    "description": {
+      "dtype": "string",
+      "null_count": 0,
+      "null_pct": 0.0
+    },
+    "url": {
+      "dtype": "string",
+      "null_count": 0,
+      "null_pct": 0.0
+    },
+    "market_type": {
+      "dtype": "string",
+      "null_count": 0,
+      "null_pct": 0.0,
+      "value_counts_top20": {
+        "event": 61130
+      }
+    },
+    "options_json": {
+      "dtype": "string",
+      "null_count": 0,
+      "null_pct": 0.0,
+      "json_stats": {
+        "sampled": true,
+        "sample_size": 20000,
+        "type_counts": {
+          "list": 20000
+        },
+        "parse_errors": {},
+        "example_values": [
+          [
+            {
+              "option_id": "YES",
+              "market_id": "KXBTCD-25JAN0518-T90999.99",
+              "title": "YES",
+              "resolved_value_json": null,
+              "ts": [
+                "2025-01-05T23:59:59"
+              ],
+              "belief": [
+                0.5
+              ],
+              "bid": [
+                null
+              ],
+              "ask": [
+                null
+              ],
+              "volume": [
+                0.0
+              ],
+              "open_interest": [
+                0.0
+              ],
+              "metadata_json": "{\"date\": \"2025-01-05\", \"ticker_name\": \"KXBTCD-25JAN0518-T90999.99\", \"report_ticker\": \"KXBTCD\", \"payout_type\": \"Binary Option\", \"open_interest\": 0.0, \"daily_volume\": 0, \"block_volume\": 0, \"high\": 50, \"low\": 50, \"status\": \"finalized\"}",
+              "url": "https://kalshi.com/markets/BTCD/KXBTCD-25JAN0518-T90999.99",
+              "is_synthetic": false
+            },
+            {
+              "option_id": "NO",
+              "market_id": "KXBTCD-25JAN0518-T90999.99",
+              "title": "NO",
+              "resolved_value_json": null,
+              "ts": [
+                "2025-01-05T23:59:59"
+              ],
+              "belief": [
+                0.5
+              ],
+              "bid": [
+                null
+              ],
+              "ask": [
+                null
+              ],
+              "volume": [
+                null
+              ],
+              "open_interest": [
+                null
+              ],
+              "metadata_json": "{\"date\": \"2025-01-05\", \"ticker_name\": \"KXBTCD-25JAN0518-T90999.99\", \"report_ticker\": \"KXBTCD\", \"payout_type\": \"Binary Option\", \"open_interest\": 0.0, \"daily_volume\": 0, \"block_volume\": 0, \"high\": 50, \"low\": 50, \"status\": \"finalized\"}",
+              "url": "https://kalshi.com/markets/BTCD/KXBTCD-25JAN0518-T90999.99",
+              "is_synthetic": true,
+              "derived_from_market_id": "KXBTCD-25JAN0518-T90999.99"
+            }
+          ],
+          [
+            {
+              "option_id": "YES",
+              "market_id": "KXCITIESWEATHER-24DEC30(HOU)(MIA)(NY)(PHIL)-(T72)(T76)(T52)(T53)",
+              "title": "YES",
+              "resolved_value_json": null,
+              "ts": [
+                "2025-01-01T23:59:59",
+                "2025-01-02T23:59:59",
+                "2025-01-03T23:59:59",
+                "2025-01-04T23:59:59",
+                "2025-01-05T23:59:59"
+              ],
+              "belief": [
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "open_interest": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "metadata_json": "{\"date\": \"2025-01-02\", \"ticker_name\": \"KXCITIESWEATHER-24DEC30(HOU)(MIA)(NY)(PHIL)-(T72)(T76)(T52)(T53)\", \"report_ticker\": \"KXCITIESWEATHER\", \"payout_type\": \"Binary Option\", \"open_interest\": 0.0, \"daily_volume\": 0, \"block_volume\": 0, \"high\": 50, \"low\": 50, \"status\": \"finalized\"}",
+              "url": "https://kalshi.com/markets/CITIESWEATHER/KXCITIESWEATHER-24DEC30(HOU)(MIA)(NY)(PHIL)-(T72)(T76)(T52)(T53)",
+              "is_synthetic": false
+            },
+            {
+              "option_id": "NO",
+              "market_id": "KXCITIESWEATHER-24DEC30(HOU)(MIA)(NY)(PHIL)-(T72)(T76)(T52)(T53)",
+              "title": "NO",
+              "resolved_value_json": null,
+              "ts": [
+                "2025-01-01T23:59:59",
+                "2025-01-02T23:59:59",
+                "2025-01-03T23:59:59",
+                "2025-01-04T23:59:59",
+                "2025-01-05T23:59:59"
+              ],
+              "belief": [
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "open_interest": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "metadata_json": "{\"date\": \"2025-01-02\", \"ticker_name\": \"KXCITIESWEATHER-24DEC30(HOU)(MIA)(NY)(PHIL)-(T72)(T76)(T52)(T53)\", \"report_ticker\": \"KXCITIESWEATHER\", \"payout_type\": \"Binary Option\", \"open_interest\": 0.0, \"daily_volume\": 0, \"block_volume\": 0, \"high\": 50, \"low\": 50, \"status\": \"finalized\"}",
+              "url": "https://kalshi.com/markets/CITIESWEATHER/KXCITIESWEATHER-24DEC30(HOU)(MIA)(NY)(PHIL)-(T72)(T76)(T52)(T53)",
+              "is_synthetic": true,
+              "derived_from_market_id": "KXCITIESWEATHER-24DEC30(HOU)(MIA)(NY)(PHIL)-(T72)(T76)(T52)(T53)"
+            }
+          ],
+          [
+            {
+              "option_id": "YES",
+              "market_id": "KXPRESCROATIA-DP",
+              "title": "YES",
+              "resolved_value_json": null,
+              "ts": [
+                "2025-01-01T23:59:59",
+                "2025-01-02T23:59:59",
+                "2025-01-03T23:59:59",
+                "2025-01-04T23:59:59",
+                "2025-01-05T23:59:59"
+              ],
+              "belief": [
+                0.01,
+                0.025,
+                0.02,
+                0.5,
+                0.02
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                0.0,
+                980.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "open_interest": [
+                0.0,
+                22574.0,
+                22574.0,
+                0.0,
+                22574.0
+              ],
+              "metadata_json": "{\"date\": \"2025-01-02\", \"ticker_name\": \"KXPRESCROATIA-DP\", \"report_ticker\": \"KXPRESCROATIA\", \"payout_type\": \"Binary Option\", \"open_interest\": 22574.0, \"daily_volume\": 980, \"block_volume\": 0, \"high\": 3, \"low\": 2, \"status\": \"active\"}",
+              "url": "https://kalshi.com/markets/PRESCROATIA/KXPRESCROATIA-DP",
+              "is_synthetic": false
+            },
+            {
+              "option_id": "NO",
+              "market_id": "KXPRESCROATIA-DP",
+              "title": "NO",
+              "resolved_value_json": null,
+              "ts": [
+                "2025-01-01T23:59:59",
+                "2025-01-02T23:59:59",
+                "2025-01-03T23:59:59",
+                "2025-01-04T23:59:59",
+                "2025-01-05T23:59:59"
+              ],
+              "belief": [
+                0.99,
+                0.975,
+                0.98,
+                0.5,
+                0.98
+              ],
+              "bid": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "ask": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "volume": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "open_interest": [
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "metadata_json": "{\"date\": \"2025-01-02\", \"ticker_name\": \"KXPRESCROATIA-DP\", \"report_ticker\": \"KXPRESCROATIA\", \"payout_type\": \"Binary Option\", \"open_interest\": 22574.0, \"daily_volume\": 980, \"block_volume\": 0, \"high\": 3, \"low\": 2, \"status\": \"active\"}",
+              "url": "https://kalshi.com/markets/PRESCROATIA/KXPRESCROATIA-DP",
+              "is_synthetic": true,
+              "derived_from_market_id": "KXPRESCROATIA-DP"
+            }
+          ]
+        ]
+      }
+    },
+    "end_time": {
+      "dtype": "datetime64[ns, UTC]",
+      "null_count": 61076,
+      "null_pct": 0.9991166366759365,
+      "datetime_stats": {
+        "min": "2025-01-01T15:00:00+00:00",
+        "max": "2030-01-02T04:59:00+00:00",
+        "time_midnight_ratio": 0.05555555555555555,
+        "unique_dates": 20
+      }
+    },
+    "status": {
+      "dtype": "string",
+      "null_count": 0,
+      "null_pct": 0.0,
+      "value_counts_top20": {
+        "closed": 55051,
+        "unknown": 6038,
+        "resolved": 39,
+        "open": 2
+      }
+    },
+    "resolved_value_json": {
+      "dtype": "string",
+      "null_count": 61091,
+      "null_pct": 0.9993620153770653,
+      "json_stats": {
+        "sampled": false,
+        "sample_size": 39,
+        "type_counts": {
+          "str": 39
+        },
+        "parse_errors": {},
+        "example_values": [
+          "Starts",
+          "NASDAQ100Y-24DEC31-T18499.99",
+          "INXD-24DEC31-T5799.99"
+        ]
+      }
+    },
+    "created_time": {
+      "dtype": "datetime64[ns, UTC]",
+      "null_count": 61076,
+      "null_pct": 0.9991166366759365,
+      "datetime_stats": {
+        "min": "2022-02-02T15:00:00+00:00",
+        "max": "2024-01-03T15:00:00+00:00",
+        "time_midnight_ratio": 0.0,
+        "unique_dates": 28
+      }
+    },
+    "metadata_json": {
+      "dtype": "string",
+      "null_count": 0,
+      "null_pct": 0.0,
+      "json_stats": {
+        "sampled": true,
+        "sample_size": 20000,
+        "type_counts": {
+          "dict": 20000
+        },
+        "parse_errors": {},
+        "example_values": [
+          {
+            "option_count": 2,
+            "resolved_yes_count": 0,
+            "resolved_yes_option_ids": []
+          },
+          {
+            "option_count": 2,
+            "resolved_yes_count": 0,
+            "resolved_yes_option_ids": []
+          },
+          {
+            "option_count": 2,
+            "resolved_yes_count": 0,
+            "resolved_yes_option_ids": []
+          }
+        ]
+      }
+    }
+  },
+  "cross_checks": {
+    "options_json_stats": {
+      "sample_rows": 20000,
+      "parse_errors": {},
+      "options_count_stats": {
+        "min": 2,
+        "max": 15,
+        "mean": 2.00145
+      },
+      "options_ts_belief_length_mismatch": 0,
+      "options_ts_bid_length_mismatch": 0,
+      "options_ts_ask_length_mismatch": 0
+    },
+    "resolved_without_value": 0,
+    "resolved_status_empty_value": 0,
+    "resolved_status_nonempty_value": 39,
+    "has_value_without_resolved_status": 0,
+    "created_after_end": 0
+  },
+  "validation": {
+    "source_filter": "kalshi",
+    "errors": [
+      "end_time_null_count=61076"
+    ],
+    "warnings": [],
+    "source_counts": {
+      "kalshi": 61130
+    },
+    "schema": {
+      "errors": [
+        "end_time_null_count=61076"
+      ],
+      "warnings": []
+    }
+  }
+}

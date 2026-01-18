@@ -1,0 +1,99 @@
+Rows: 33245
+Columns: ['source', 'event_id', 'title', 'description', 'url', 'market_type', 'options_json', 'end_time', 'status', 'resolved_value_json', 'created_time', 'metadata_json']
+
+== Column: source ==
+Basic: {'dtype': 'string', 'null_count': 0, 'null_pct': 0.0}
+Top values: {'kalshi': 33059, 'metaculus': 186}
+
+== Column: event_id ==
+Basic: {'dtype': 'string', 'null_count': 0, 'null_pct': 0.0}
+Unique: 33245
+
+== Column: title ==
+Basic: {'dtype': 'string', 'null_count': 0, 'null_pct': 0.0}
+
+== Column: description ==
+Basic: {'dtype': 'string', 'null_count': 0, 'null_pct': 0.0}
+
+== Column: url ==
+Basic: {'dtype': 'string', 'null_count': 0, 'null_pct': 0.0}
+
+== Column: market_type ==
+Basic: {'dtype': 'string', 'null_count': 0, 'null_pct': 0.0}
+Top values: {'event': 33245}
+
+== Column: options_json ==
+Basic: {'dtype': 'string', 'null_count': 0, 'null_pct': 0.0}
+JSON: {'sampled': True, 'sample_size': 20000, 'type_counts': {'list': 20000}, 'parse_errors': {}, 'example_values': [[{'option_id': 'YES', 'market_id': 'PRES-2024-CO', 'title': 'YES', 'resolved_value_json': None, 'ts': ['2024-11-01T23:59:59', '2024-11-02T23:59:59', '2024-11-03T23:59:59', '2024-11-04T23:59:59', '2024-11-05T23:59:59', '2024-11-06T23:59:59', '2024-11-07T23:59:59', '2024-11-08T23:59:59', '2024-11-09T23:59:59', '2024-11-10T23:59:59', '2024-11-11T23:59:59', '2024-11-12T23:59:59', '2024-11-13T23:59:59', '2024-11-14T23:59:59', '2024-11-15T23:59:59'], 'belief': [0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.5], 'bid': [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None], 'ask': [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None], 'volume': [613.0, 601.0, 617.0, 351.0, 10299.0, 5409.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 'open_interest': [2749.0, 3350.0, 3967.0, 4318.0, 14602.0, 20011.0, 20011.0, 20011.0, 20011.0, 20011.0, 20011.0, 20011.0, 20011.0, 20011.0, 0.0], 'metadata_json': '{"date": "2024-11-03", "ticker_name": "PRES-2024-CO", "report_ticker": "PRES", "payout_type": "Binary Option", "open_interest": 3967.0, "daily_volume": 617, "block_volume": 0, "high": 1, "low": 1, "status": "active"}', 'url': 'https://kalshi.com/markets/PRES/PRES-2024-CO', 'is_synthetic': False}, {'option_id': 'NO', 'market_id': 'PRES-2024-CO', 'title': 'NO', 'resolved_value_json': None, 'ts': ['2024-11-01T23:59:59', '2024-11-02T23:59:59', '2024-11-03T23:59:59', '2024-11-04T23:59:59', '2024-11-05T23:59:59', '2024-11-06T23:59:59', '2024-11-07T23:59:59', '2024-11-08T23:59:59', '2024-11-09T23:59:59', '2024-11-10T23:59:59', '2024-11-11T23:59:59', '2024-11-12T23:59:59', '2024-11-13T23:59:59', '2024-11-14T23:59:59', '2024-11-15T23:59:59'], 'belief': [0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.5], 'bid': [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None], 'ask': [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None], 'volume': [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None], 'open_interest': [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None], 'metadata_json': '{"date": "2024-11-03", "ticker_name": "PRES-2024-CO", "report_ticker": "PRES", "payout_type": "Binary Option", "open_interest": 3967.0, "daily_volume": 617, "block_volume": 0, "high": 1, "low": 1, "status": "active"}', 'url': 'https://kalshi.com/markets/PRES/PRES-2024-CO', 'is_synthetic': True, 'derived_from_market_id': 'PRES-2024-CO'}], [{'option_id': 'YES', 'market_id': 'KXEURUSDH-24OCT3109-T1.08059', 'title': 'YES', 'resolved_value_json': None, 'ts': ['2024-11-01T23:59:59', '2024-11-02T23:59:59', '2024-11-03T23:59:59', '2024-11-04T23:59:59', '2024-11-05T23:59:59', '2024-11-06T23:59:59', '2024-11-07T23:59:59'], 'belief': [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5], 'bid': [None, None, None, None, None, None, None], 'ask': [None, None, None, None, None, None, None], 'volume': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 'open_interest': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 'metadata_json': '{"date": "2024-11-03", "ticker_name": "KXEURUSDH-24OCT3109-T1.08059", "report_ticker": "KXEURUSDH", "payout_type": "Binary Option", "open_interest": 0.0, "daily_volume": 0, "block_volume": 0, "high": 50, "low": 50, "status": "finalized"}', 'url': 'https://kalshi.com/markets/EURUSDH/KXEURUSDH-24OCT3109-T1.08059', 'is_synthetic': False}, {'option_id': 'NO', 'market_id': 'KXEURUSDH-24OCT3109-T1.08059', 'title': 'NO', 'resolved_value_json': None, 'ts': ['2024-11-01T23:59:59', '2024-11-02T23:59:59', '2024-11-03T23:59:59', '2024-11-04T23:59:59', '2024-11-05T23:59:59', '2024-11-06T23:59:59', '2024-11-07T23:59:59'], 'belief': [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5], 'bid': [None, None, None, None, None, None, None], 'ask': [None, None, None, None, None, None, None], 'volume': [None, None, None, None, None, None, None], 'open_interest': [None, None, None, None, None, None, None], 'metadata_json': '{"date": "2024-11-03", "ticker_name": "KXEURUSDH-24OCT3109-T1.08059", "report_ticker": "KXEURUSDH", "payout_type": "Binary Option", "open_interest": 0.0, "daily_volume": 0, "block_volume": 0, "high": 50, "low": 50, "status": "finalized"}', 'url': 'https://kalshi.com/markets/EURUSDH/KXEURUSDH-24OCT3109-T1.08059', 'is_synthetic': True, 'derived_from_market_id': 'KXEURUSDH-24OCT3109-T1.08059'}], [{'option_id': 'YES', 'market_id': 'KXUSDJPYH-24NOV1512-T152.21900', 'title': 'YES', 'resolved_value_json': None, 'ts': ['2024-11-14T23:59:59', '2024-11-15T23:59:59'], 'belief': [0.5, 0.99], 'bid': [None, None], 'ask': [None, None], 'volume': [0.0, 5.0], 'open_interest': [0.0, 0.0], 'metadata_json': '{"date": "2024-11-14", "ticker_name": "KXUSDJPYH-24NOV1512-T152.21900", "report_ticker": "KXUSDJPYH", "payout_type": "Binary Option", "open_interest": 0.0, "daily_volume": 0, "block_volume": 0, "high": 50, "low": 50, "status": "active"}', 'url': 'https://kalshi.com/markets/USDJPYH/KXUSDJPYH-24NOV1512-T152.21900', 'is_synthetic': False}, {'option_id': 'NO', 'market_id': 'KXUSDJPYH-24NOV1512-T152.21900', 'title': 'NO', 'resolved_value_json': None, 'ts': ['2024-11-14T23:59:59', '2024-11-15T23:59:59'], 'belief': [0.5, 0.010000000000000009], 'bid': [None, None], 'ask': [None, None], 'volume': [None, None], 'open_interest': [None, None], 'metadata_json': '{"date": "2024-11-14", "ticker_name": "KXUSDJPYH-24NOV1512-T152.21900", "report_ticker": "KXUSDJPYH", "payout_type": "Binary Option", "open_interest": 0.0, "daily_volume": 0, "block_volume": 0, "high": 50, "low": 50, "status": "active"}', 'url': 'https://kalshi.com/markets/USDJPYH/KXUSDJPYH-24NOV1512-T152.21900', 'is_synthetic': True, 'derived_from_market_id': 'KXUSDJPYH-24NOV1512-T152.21900'}]]}
+
+== Column: end_time ==
+Basic: {'dtype': 'datetime64[ns, UTC]', 'null_count': 32935, 'null_pct': 0.9906752895172206}
+Datetime: {'min': '2022-02-02T15:00:00+00:00', 'max': '2050-01-01T00:00:00+00:00', 'time_midnight_ratio': 0.04838709677419355, 'unique_dates': 88}
+
+== Column: status ==
+Basic: {'dtype': 'string', 'null_count': 0, 'null_pct': 0.0}
+Top values: {'closed': 26664, 'unknown': 6357, 'resolved': 171, 'open': 53}
+
+== Column: resolved_value_json ==
+Basic: {'dtype': 'string', 'null_count': 33074, 'null_pct': 0.9948563693788539}
+JSON: {'sampled': False, 'sample_size': 171, 'type_counts': {'str': 171}, 'parse_errors': {}, 'example_values': ['NASDAQ100Y-24DEC31-T18499.99', 'INXD-24DEC31-T5799.99', 'Leaves leadership']}
+
+== Column: created_time ==
+Basic: {'dtype': 'datetime64[ns, UTC]', 'null_count': 33121, 'null_pct': 0.9962701158068883}
+Datetime: {'min': '2021-11-04T14:00:00+00:00', 'max': '2024-01-23T15:00:00+00:00', 'time_midnight_ratio': 0.0, 'unique_dates': 48}
+
+== Column: metadata_json ==
+Basic: {'dtype': 'string', 'null_count': 0, 'null_pct': 0.0}
+JSON: {'sampled': True, 'sample_size': 20000, 'type_counts': {'dict': 20000}, 'parse_errors': {}, 'example_values': [{'option_count': 2, 'resolved_yes_count': 0, 'resolved_yes_option_ids': []}, {'option_count': 2, 'resolved_yes_count': 0, 'resolved_yes_option_ids': []}, {'option_count': 2, 'resolved_yes_count': 0, 'resolved_yes_option_ids': []}]}
+
+== Cross-column checks ==
+{
+  "options_json_stats": {
+    "sample_rows": 20000,
+    "parse_errors": {},
+    "options_count_stats": {
+      "min": 1,
+      "max": 15,
+      "mean": 2.0052
+    },
+    "options_ts_belief_length_mismatch": 0,
+    "options_ts_bid_length_mismatch": 0,
+    "options_ts_ask_length_mismatch": 0
+  },
+  "resolved_without_value": 0,
+  "resolved_status_empty_value": 0,
+  "resolved_status_nonempty_value": 171,
+  "has_value_without_resolved_status": 0,
+  "created_after_end": 0
+}
+
+== Validation ==
+{
+  "source_filter": "all",
+  "errors": [
+    "end_time_null_count=32935"
+  ],
+  "warnings": [],
+  "source_counts": {
+    "kalshi": 33059,
+    "metaculus": 186
+  },
+  "schema": {
+    "errors": [
+      "end_time_null_count=32935"
+    ],
+    "warnings": []
+  },
+  "metaculus_options_json": {
+    "sample_rows": 186,
+    "parse_errors": 0,
+    "non_list_values": 0,
+    "non_dict_options": 0,
+    "missing_keys": {},
+    "synthetic_missing_parent": 0,
+    "empty_ts_options": 281,
+    "empty_belief_options": 281,
+    "ts_belief_length_mismatch": 0,
+    "total_options_checked": 281
+  }
+}
