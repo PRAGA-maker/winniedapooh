@@ -1,14 +1,22 @@
 import json
 import os
+import time
 from typing import List, Dict, Any, Optional
+import requests
 from src.common.http import get_kalshi_client
 from src.common.config import config
 from src.common.logging import logger
 
 class KalshiGrabber:
-    def __init__(self):
+    def __init__(self, markets_batch_size: int = 50, markets_url_length_limit: int = 7500):
         self.client = get_kalshi_client()
         self._candlestick_max_tickers = 100
+        self._markets_batch_size = markets_batch_size
+        self._markets_url_length_limit = markets_url_length_limit
+
+    def estimate_markets_url_length(self, tickers: List[str]) -> int:
+        base = f"{config.kalshi_base_url.rstrip('/')}/markets?tickers="
+        return len(base) + len(",".join(tickers))
 
     def fetch_markets(self, limit: int = 1000, status: str = "settled", use_cache: bool = True, ticker: Optional[str] = None, tickers: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Fetch list of markets."""
@@ -45,28 +53,95 @@ class KalshiGrabber:
 
     def fetch_markets_by_tickers(self, tickers: List[str]) -> List[Dict[str, Any]]:
         """Fetch multiple markets by their tickers in batches."""
-        logger.info(f"Fetching {len(tickers)} Kalshi markets by tickers in batches...")
+        logger.info(
+            f"Fetching {len(tickers)} Kalshi markets by tickers in batches "
+            f"(batch_size={self._markets_batch_size})..."
+        )
         all_markets = []
         
         # OPTIMIZATION: Reduced from 100 to 50 to avoid 413 "Request Entity Too Large" errors
         # with very long ticker names (e.g., KXCITIESWEATHER markets)
-        batch_size = 50
+        batch_size = self._markets_batch_size
+        total_batches = 0
+        error_413_count = 0
+        error_other_count = 0
+        start_time = time.perf_counter()
+
         for i in range(0, len(tickers), batch_size):
+            total_batches += 1
             batch_tickers = tickers[i:i + batch_size]
             tickers_str = ",".join(batch_tickers)
+            url_length = self.estimate_markets_url_length(batch_tickers)
+
+            if url_length > self._markets_url_length_limit:
+                logger.warning(
+                    f"Kalshi URL length {url_length} exceeds limit "
+                    f"{self._markets_url_length_limit} for batch starting at {i}"
+                )
             
             try:
+                batch_start = time.perf_counter()
                 response = self.client.get("/markets", params={"tickers": tickers_str})
+                elapsed_ms = (time.perf_counter() - batch_start) * 1000
                 data = response.json()
                 batch_results = data.get("markets", [])
                 all_markets.extend(batch_results)
+
+                batch_metrics = {
+                    "batch_size": len(batch_tickers),
+                    "url_length": url_length,
+                    "status_code": response.status_code,
+                    "elapsed_ms": round(elapsed_ms, 2),
+                    "markets_returned": len(batch_results),
+                    "batch_start_index": i,
+                }
+                logger.info(f"KALSHI_MARKETS_BATCH_METRICS {json.dumps(batch_metrics, sort_keys=True)}")
                 
                 if (i // batch_size) % 20 == 0:
                     logger.info(f"  Fetched {len(all_markets)}/{len(tickers)} market records...")
-            except Exception as e:
+            except requests.exceptions.HTTPError as e:
+                status_code = e.response.status_code if e.response is not None else None
+                if status_code == 413:
+                    error_413_count += 1
+                    logger.warning(f"Kalshi batch 413 (start_index={i}, url_length={url_length})")
+                else:
+                    error_other_count += 1
+                batch_metrics = {
+                    "batch_size": len(batch_tickers),
+                    "url_length": url_length,
+                    "status_code": status_code,
+                    "elapsed_ms": None,
+                    "markets_returned": 0,
+                    "batch_start_index": i,
+                }
+                logger.info(f"KALSHI_MARKETS_BATCH_METRICS {json.dumps(batch_metrics, sort_keys=True)}")
                 logger.error(f"Failed to fetch batch starting at {i}: {e}")
                 # Continue to next batch even if this one fails
-                
+            except Exception as e:
+                error_other_count += 1
+                batch_metrics = {
+                    "batch_size": len(batch_tickers),
+                    "url_length": url_length,
+                    "status_code": None,
+                    "elapsed_ms": None,
+                    "markets_returned": 0,
+                    "batch_start_index": i,
+                }
+                logger.info(f"KALSHI_MARKETS_BATCH_METRICS {json.dumps(batch_metrics, sort_keys=True)}")
+                logger.error(f"Failed to fetch batch starting at {i}: {e}")
+                # Continue to next batch even if this one fails
+
+        elapsed_total = time.perf_counter() - start_time
+        summary = {
+            "batch_size": batch_size,
+            "total_batches": total_batches,
+            "total_tickers": len(tickers),
+            "markets_returned": len(all_markets),
+            "error_413_count": error_413_count,
+            "error_other_count": error_other_count,
+            "wall_clock_seconds": round(elapsed_total, 2),
+        }
+        logger.info(f"KALSHI_MARKETS_BATCH_SUMMARY {json.dumps(summary, sort_keys=True)}")
         return all_markets
 
     def fetch_market_details(self, ticker: str, use_cache: bool = True) -> Dict[str, Any]:
@@ -146,4 +221,8 @@ class KalshiGrabber:
 #     until a verified historical candlestick source is confirmed.
 # 16. Do/Don't: Do not fill bid/ask from metadata snapshots unless provenance is explicit.
 #     Don't mix snapshot bid/ask with historical series without clear labeling.
+# 17. Batch Metrics Logging: Emit KALSHI_MARKETS_BATCH_METRICS and SUMMARY log lines so
+#     batch size experiments can be parsed into CSV/plots without custom log scraping.
+# 18. URL Length Guard: Estimate /markets?tickers=... URL length and warn when it exceeds
+#     a conservative limit (default 7500 bytes) to catch likely 413s.
 

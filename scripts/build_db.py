@@ -19,6 +19,7 @@ if __name__ == "__main__":
     parser.add_argument("--name", type=str, default=None, help="Custom name for this dataset build (isolates DB and output)")
     parser.add_argument("--kalshi-bid-ask-backfill", action="store_true", help="Force Kalshi bid/ask backfill from candlesticks (use on full runs when auto-backfill is auto-skipped)")
     parser.add_argument("--skip-kalshi", action="store_true", help="Skip Kalshi ingestion (Metaculus-only build)")
+    parser.add_argument("--kalshi-batch-size", type=int, default=None, help="Kalshi /markets batch size (default: 50)")
     args = parser.parse_args()
     
     start_date = date.fromisoformat(args.start) if args.start else None
@@ -33,6 +34,7 @@ if __name__ == "__main__":
         end_date=end_date,
         name=args.name,
         kalshi_bid_ask_backfill=args.kalshi_bid_ask_backfill,
-        skip_kalshi=args.skip_kalshi
+        skip_kalshi=args.skip_kalshi,
+        kalshi_batch_size=args.kalshi_batch_size
     )
 

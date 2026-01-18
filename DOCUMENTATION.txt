@@ -36,6 +36,10 @@ Prerequisites: Python 3.13+, `uv` (package manager).
 - Alternative: `uv pip install -e .` (if `uv sync` doesn't work)
 - Ensure `uv.lock` file exists and is up to date
 
+**Kalshi API enrichment tuning**:
+- Use `--kalshi-batch-size` with `scripts/build_db.py` to control the /markets batch size.
+- Example: `uv run scripts/build_db.py --start 2024-12-30 --end 2024-12-31 --kalshi-batch-size 70`
+
 --------------------------------------------------------------------------------
 2. DATA SCHEMA
 --------------------------------------------------------------------------------

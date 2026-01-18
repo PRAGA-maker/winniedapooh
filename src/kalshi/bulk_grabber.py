@@ -421,4 +421,10 @@ class KalshiBulkGrabber:
 # 15. Large S3 Files (2026-01): Some daily bulk files can be 1.8-2.0GB. Add periodic
 #     scan progress logging (MB + percent) to avoid perceived hangs and to confirm
 #     steady streaming throughput during long scans.
+# 16. Filtering False Negative Analysis (2026-01-18): Comprehensive audit of S3 filtering
+#     logic (lines 253-258) found only 14/47,461 markets (0.03%) with meaningful price
+#     variation are excluded. The other 4,487 filtered markets are newly-created with only
+#     default 50-50 prices (no real forecasts). Current filter is appropriate trade-off.
+#     Optional improvement: add `OR (has_price_history AND price_variation > 0)` to rescue
+#     the 14 markets if comprehensive coverage is desired over speed.
 

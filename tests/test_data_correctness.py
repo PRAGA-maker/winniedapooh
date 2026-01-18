@@ -70,6 +70,65 @@ def test_basic_statistics(latest_parquet_df):
     print(f"  Metaculus events: {sources.get('metaculus', 0)}")
 
 
+def test_kalshi_enrichment_titles_and_descriptions(latest_parquet_df):
+    """Ensure Kalshi metadata is enriched beyond S3 fallbacks."""
+    df = latest_parquet_df
+    if 'source' not in df.columns:
+        pytest.skip("source column not found")
+
+    kalshi_df = df[df['source'] == 'kalshi'].copy()
+    if kalshi_df.empty:
+        pytest.skip("No Kalshi rows to validate")
+
+    kalshi_df["title"] = kalshi_df["title"].fillna("").astype(str)
+    kalshi_df["description"] = kalshi_df["description"].fillna("").astype(str)
+
+    id_col = "market_id" if "market_id" in kalshi_df.columns else "event_id"
+    kalshi_df[id_col] = kalshi_df[id_col].fillna("").astype(str)
+
+    ticker_title_mask = kalshi_df["title"].str.strip() == kalshi_df[id_col].str.strip()
+    empty_desc_mask = kalshi_df["description"].str.strip() == ""
+    short_desc_mask = kalshi_df["description"].str.len() < 50
+
+    ticker_title_count = int(ticker_title_mask.sum())
+    empty_desc_count = int(empty_desc_mask.sum())
+    short_desc_count = int(short_desc_mask.sum())
+
+    print("\nKalshi Enrichment Quality:")
+    print(f"  Total Kalshi rows: {len(kalshi_df)}")
+    print(f"  Ticker-only titles: {ticker_title_count}")
+    print(f"  Empty descriptions: {empty_desc_count}")
+    print(f"  Short descriptions (<50 chars): {short_desc_count}")
+
+    assert ticker_title_count == 0, f"Ticker-only titles found: {ticker_title_count}"
+    assert empty_desc_count == 0, f"Empty descriptions found: {empty_desc_count}"
+    assert short_desc_count / len(kalshi_df) < 0.05, (
+        f"Too many short descriptions: {short_desc_count}/{len(kalshi_df)}"
+    )
+
+
+def test_kalshi_url_quality(latest_parquet_df):
+    """Validate Kalshi URLs follow expected format."""
+    df = latest_parquet_df
+    if 'source' not in df.columns or 'url' not in df.columns:
+        pytest.skip("source/url column not found")
+
+    kalshi_df = df[df['source'] == 'kalshi'].copy()
+    if kalshi_df.empty:
+        pytest.skip("No Kalshi rows to validate")
+
+    kalshi_df["url"] = kalshi_df["url"].fillna("").astype(str)
+    has_kalshi_url = kalshi_df["url"].str.contains("kalshi.com/markets/", na=False)
+    valid_ratio = has_kalshi_url.sum() / len(kalshi_df)
+
+    print("\nKalshi URL Quality:")
+    print(f"  Total Kalshi rows: {len(kalshi_df)}")
+    print(f"  Valid URL ratio: {valid_ratio:.2%}")
+
+    assert valid_ratio > 0.95, (
+        f"Only {has_kalshi_url.sum()} / {len(kalshi_df)} URLs look valid"
+    )
+
 def test_belief_lists_structure(latest_parquet_df):
     """Test that belief lists have proper structure."""
     df = latest_parquet_df
