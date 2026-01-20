@@ -129,10 +129,16 @@ class KalshiAuth(requests.auth.AuthBase):
         self.api_key_id = api_key_id
         # Handle the case where the private key might be passed with literal \n
         private_key_str = private_key_str.replace("\\n", "\n")
-        self.private_key = serialization.load_pem_private_key(
-            private_key_str.encode(),
-            password=None
-        )
+        # Strip any extra whitespace that might cause PEM parsing issues
+        private_key_str = private_key_str.strip()
+        try:
+            self.private_key = serialization.load_pem_private_key(
+                private_key_str.encode(),
+                password=None
+            )
+        except ValueError as e:
+            # Provide more helpful error message
+            raise ValueError(f"Failed to load Kalshi private key: {e}. Make sure the PEM file is valid and not corrupted.")
 
     def __call__(self, r):
         # Kalshi V2 uses milliseconds for timestamp

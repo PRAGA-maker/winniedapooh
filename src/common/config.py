@@ -26,7 +26,8 @@ class Config:
             if not key_path.is_absolute():
                 key_path = self.repo_root / key_path
             if key_path.exists():
-                self.kalshi_private_key = key_path.read_text()
+                # Read and strip whitespace to handle any formatting issues
+                self.kalshi_private_key = key_path.read_text().strip()
         
         # Load multiple Metaculus tokens for rotation
         self.metaculus_tokens = []
