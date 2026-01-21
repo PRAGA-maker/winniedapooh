@@ -47,22 +47,79 @@ def _map_s3_status(raw_status: Optional[str]) -> str:
         return "closed"
     return "unknown"
 
-def process_kalshi_day(target_date: date, allowed_tickers: Optional[set] = None):
+def _insert_history_batch_direct(db_path: Path, source: str, points_with_metadata: List[Dict[str, Any]]):
+    """
+    Direct SQLite insert for use within worker processes.
+    Creates its own connection to avoid multiprocessing issues.
+    """
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA synchronous=OFF")
+    conn.execute("PRAGMA journal_mode=WAL")
+
+    try:
+        # Insert market metadata
+        fields = ["source", "market_id", "event_id", "title", "description", "url", "market_type",
+                  "answer_options_json", "end_time", "status", "resolved_value_json", "created_time", "metadata_json"]
+
+        market_records = {}
+        for item in points_with_metadata:
+            market_id = item["market_id"]
+            if "market_record" in item:
+                market_records[market_id] = item["market_record"]
+
+        if market_records:
+            market_rows = []
+            for market_id, market_record in market_records.items():
+                record = {f: market_record.get(f) for f in fields}
+                record["source"] = source
+                record["market_id"] = market_id
+                market_rows.append(tuple(record[f] for f in fields))
+
+            placeholders = ", ".join(["?"] * len(fields))
+            conn.executemany(f"INSERT OR IGNORE INTO markets ({', '.join(fields)}) VALUES ({placeholders})", market_rows)
+
+        # Insert history points
+        h_fields = ["source", "market_id", "ts", "belief_scalar", "belief_json", "bid", "ask", "volume", "open_interest", "raw_json"]
+        h_placeholders = ", ".join(["?"] * len(h_fields))
+
+        history_rows = []
+        for item in points_with_metadata:
+            point = item["point"]
+            market_id = item["market_id"]
+            pt_record = {f: point.get(f) for f in h_fields}
+            pt_record["source"] = source
+            pt_record["market_id"] = market_id
+            history_rows.append(tuple(pt_record[f] for f in h_fields))
+
+        if history_rows:
+            conn.executemany(f"INSERT OR IGNORE INTO history ({', '.join(h_fields)}) VALUES ({h_placeholders})", history_rows)
+
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def process_kalshi_day(target_date: date, allowed_tickers: Optional[set] = None,
+                       db_path: Optional[Path] = None, batch_size: int = 5000):
     """
     Worker function to process a single day of Kalshi bulk data.
-    
-    NOTE: Accumulates all points in memory before returning. For busy days with 100K+ records,
-    this can be 50-100MB per worker. With many workers, total accumulation can reach several GBs.
-    For very large datasets (18M+ markets), consider batching DB inserts within worker instead.
+
+    STREAMING MODE (db_path provided):
+        Flushes to SQLite every `batch_size` records. Memory usage stays bounded
+        at ~batch_size * record_size (~50KB/batch for 5000 records).
+
+    LEGACY MODE (db_path=None):
+        Accumulates all points in memory before returning. For busy days with 100K+ records,
+        this can be 50-100MB per worker. With many workers, total accumulation can reach several GBs.
     """
     bulk_grabber = KalshiBulkGrabber()
-    day_points = []
+    batch_buffer = []
     records_count = 0
-    
+
     try:
         for raw_record in bulk_grabber.fetch_daily_bulk_stream(target_date):
             ticker = raw_record["ticker_name"]
-            
+
             # AGGRESSIVE FILTERING: Skip tickers not in our allowed set (the active ones)
             if allowed_tickers is not None and ticker not in allowed_tickers:
                 continue
@@ -72,7 +129,7 @@ def process_kalshi_day(target_date: date, allowed_tickers: Optional[set] = None)
                 payout_type = raw_record.get("payout_type")
                 market_type = _map_s3_payout_type(payout_type)
                 options = _s3_answer_options(market_type)
-                
+
                 m_record = {
                     "source": "kalshi",
                     "market_id": ticker,
@@ -86,16 +143,29 @@ def process_kalshi_day(target_date: date, allowed_tickers: Optional[set] = None)
                     "metadata_json": json.dumps(raw_record)
                 }
 
-                day_points.append({
-                    "market_id": ticker, 
-                    "point": ts_point.model_dump(mode='json'), 
+                batch_buffer.append({
+                    "market_id": ticker,
+                    "point": ts_point.model_dump(mode='json'),
                     "market_record": m_record
                 })
                 records_count += 1
+
+                # STREAMING: Flush to DB when batch is full
+                if db_path is not None and len(batch_buffer) >= batch_size:
+                    _insert_history_batch_direct(db_path, "kalshi", batch_buffer)
+                    batch_buffer = []
+
             except Exception:
                 continue
-        
-        return target_date, day_points, records_count
+
+        # Final flush or return
+        if db_path is not None:
+            if batch_buffer:
+                _insert_history_batch_direct(db_path, "kalshi", batch_buffer)
+            return target_date, [], records_count  # Empty list - data already in DB
+        else:
+            return target_date, batch_buffer, records_count  # Legacy mode
+
     except Exception as e:
         logger.error(f"Failed to process Kalshi day {target_date}: {e}")
         return target_date, [], 0
@@ -811,17 +881,33 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
     api_calls_count = 0
     batch_size = 17 # Kalshi rate limit is 20, we use 17 to stay safe
     
-    # Use more aggressive parallelism for S3 scanning (I/O bound)
-    # For history processing we'll use fewer (CPU bound)
-    # Use a formula that scales better with high core counts and avoids memory issues
+    # Dynamic worker allocation based on available RAM and CPU
+    import psutil
+
     num_cores = os.cpu_count() or 1
-    # User suggested: n cores - (10% floor to int n cores)
-    # We also ensure at least 2 cores are free to keep the system responsive
-    reserved_cores = max(2, int(num_cores * 0.1))
-    
-    scan_workers = max(1, num_cores - 1)  # I/O bound, can use more
-    process_workers = max(1, num_cores - reserved_cores)
-    logger.info(f"Using {scan_workers} workers for S3 scanning, {process_workers} for processing (cores={num_cores}, reserved={reserved_cores}).")
+    available_ram_gb = psutil.virtual_memory().available / (1024**3)
+    total_ram_gb = psutil.virtual_memory().total / (1024**3)
+
+    # Memory estimates per worker type (based on December 2025 profiling)
+    s3_worker_mem_mb = 150  # Each S3 scan worker holds ~100-150MB of ticker dicts
+    process_worker_mem_mb = 20  # Streaming inserts keep memory bounded at ~20MB per worker
+
+    # Calculate max workers that fit in 80% of available RAM (20% buffer)
+    usable_ram_mb = available_ram_gb * 1024 * 0.8
+    max_scan_workers_by_ram = int(usable_ram_mb / s3_worker_mem_mb)
+    max_process_workers_by_ram = int(usable_ram_mb / process_worker_mem_mb)
+
+    # Calculate max workers by CPU (use 80% of cores, keep 20% free)
+    usable_cores = int(num_cores * 0.8)
+
+    # S3 scanning: I/O bound, limited by RAM
+    scan_workers = max(2, min(max_scan_workers_by_ram, usable_cores, num_cores - 2))
+
+    # History processing: CPU bound with streaming inserts, limited by CPU
+    process_workers = max(2, min(max_process_workers_by_ram, usable_cores))
+
+    logger.info(f"System: {num_cores} cores, {available_ram_gb:.1f}GB available RAM (of {total_ram_gb:.1f}GB total)")
+    logger.info(f"Using {scan_workers} workers for S3 scanning (RAM-limited: {s3_worker_mem_mb}MB/worker), {process_workers} for processing (streaming mode: {process_worker_mem_mb}MB/worker)")
 
     # 1. Kalshi Pipeline (Optimized)
     if skip_kalshi:
@@ -935,13 +1021,15 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
             current_date += timedelta(days=1)
         
         if dates_to_process:
-            logger.info(f"Processing {len(dates_to_process)} days of Kalshi history in parallel...")
+            logger.info(f"Processing {len(dates_to_process)} days of Kalshi history in parallel (streaming mode)...")
             processed_days = 0
             allowed_set = set(active_tickers) # Use the aggressively filtered set
             with ProcessPoolExecutor(max_workers=process_workers) as executor:
-                futures = {executor.submit(process_kalshi_day, d, allowed_set): d for d in dates_to_process}
+                # Pass db_path to enable streaming inserts within workers
+                futures = {executor.submit(process_kalshi_day, d, allowed_set, store.db_path): d for d in dates_to_process}
                 for future in as_completed(futures):
                     target_date, day_points, records_count = future.result()
+                    # day_points will be empty when using streaming mode (data already in DB)
                     if day_points:
                         store.add_history_points_batch("kalshi", day_points)
                     store.mark_date_processed("kalshi", target_date)
