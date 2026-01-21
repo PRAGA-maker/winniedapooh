@@ -45,6 +45,7 @@ Prerequisites: Python 3.13+, `uv` (package manager).
 - `KALSHI_PRIVATE_KEY_PATH`: Path to your `.pem` private key file (e.g., `kalshi_key.pem`).
 - `METACULUS_TOKEN_1`, `METACULUS_TOKEN_2`, ...: One or more Metaculus API tokens for rotation.
 - `METACULUS_TOKEN`: (Legacy/Single) Fallback Metaculus token.
+- `GEMINI_API_KEY`: Google Gemini API key (required for RLM method).
 
 --------------------------------------------------------------------------------
 2. DATA SCHEMA
@@ -96,6 +97,9 @@ A. Data Handling (`forecasting/`)
 B. Task Definitions (`forecasting/tasks/`)
 - `Task`: Abstract base class for defining prediction problems.
 - `ResolveEvent`: Multiclass resolution task over event options.
+- `PredictWeekOut`: Predict belief 7 days before market close.
+- `Predict90Percent`: Predict belief at 90% through market duration (dynamic cutoff).
+  - Params: `relax_status` (allow unresolved markets), `min_history_points` (minimum data points)
 - `Example`: A single data point (features + option histories + target distribution).
 - `Batch`: A collection of `Example` objects.
 - `registry.py`: Central factory for instantiating tasks.
@@ -110,6 +114,10 @@ D. Forecasting Methods (`methods/`)
 - `ForecastMethod`: Base class for all models/baselines. Supports `.fit()`, `.predict()`, `.save()`, `.load()`.
 - `LastPriceBaseline`: Simple baseline that predicts the most recent belief.
 - `MLPForecaster`: A simple Neural Network (MLP) trained on price history.
+- `RLMForecaster`: Recursive Language Model using Gemini API with TF-IDF semantic search.
+  - Requires `GEMINI_API_KEY` in `.env`
+  - Params: `model` (default "gemini-2.0-flash"), `max_recursions` (default 3), `call_budget` (default 100)
+  - Tools: SEARCH (TF-IDF over market titles), TREND (time series analysis), BASE_RATE (historical resolution rates)
 - `registry.py`: Central factory for instantiating methods.
 
 E. Experiment Workflow (`runner/`)
@@ -148,6 +156,8 @@ All outputs are stored in `data/outputs/` (ignored by git). See `runner/results_
 /
 ├── data/               # Local data storage (raw, clean parquets, outputs)
 │   └── outputs/        # Organized experiment artifacts (models, logs, plots, metrics)
+├── external/           # Git submodules
+│   └── rlm/            # RLM library (https://github.com/alexzhang13/rlm)
 ├── forecasting/        # Forecasting core: datasets, tasks, splits, metrics
 │   └── tasks/          # Task definitions and registry
 ├── pipeline/           # Data pipeline for ingestion
@@ -155,6 +165,7 @@ All outputs are stored in `data/outputs/` (ignored by git). See `runner/results_
 │   ├── kalshi/         # Kalshi-specific API grabbers and mapping
 │   └── metaculus/      # Metaculus-specific API grabbers and mapping
 ├── methods/            # Implementations of forecasting algorithms
+│   └── rlm_tools/      # RLM helper tools (TF-IDF search, trend analysis)
 ├── runner/             # Experiment orchestration and evaluation
 ├── scripts/            # Data ingestion and inspection tools
 ├── docs/               # Platform-specific documentation/metadata
