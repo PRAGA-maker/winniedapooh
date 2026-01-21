@@ -44,10 +44,14 @@ class KalshiBulkGrabber:
                     buffer = []
                     # OPTIMIZATION: Larger chunk sizes (2MB) for better throughput on large files
                     # For 18M+ markets, larger chunks reduce connection overhead and improve streaming
-                    for chunk in response.iter_content(chunk_size=2*1024*1024): 
+                    for chunk in response.iter_content(chunk_size=2*1024*1024):
                         if not chunk:
                             continue
-                        
+                        # Validate chunk is bytes - if not, connection is corrupted, trigger retry
+                        if not isinstance(chunk, bytes):
+                            raise requests.exceptions.ChunkedEncodingError(
+                                f"Corrupt chunk received: expected bytes, got {type(chunk).__name__}"
+                            )
                         chunk_str = chunk.decode('utf-8', errors='ignore')
                         parts = chunk_str.split('},')
                         
@@ -177,6 +181,11 @@ class KalshiBulkGrabber:
                                         )
                                     last_log_time = now
                                     last_log_bytes = bytes_read
+                                # Validate chunk is bytes - if not, connection is corrupted, trigger retry
+                                if not isinstance(chunk, bytes):
+                                    raise requests.exceptions.ChunkedEncodingError(
+                                        f"Corrupt chunk for {d}: expected bytes, got {type(chunk).__name__}"
+                                    )
                                 chunk_str = chunk.decode('utf-8', errors='ignore')
                                 parts = chunk_str.split('},')
                                 
@@ -427,4 +436,9 @@ class KalshiBulkGrabber:
 #     default 50-50 prices (no real forecasts). Current filter is appropriate trade-off.
 #     Optional improvement: add `OR (has_price_history AND price_variation > 0)` to rescue
 #     the 14 markets if comprehensive coverage is desired over speed.
+# 17. Chunk Type Validation (2026-01-21): iter_content() can rarely yield non-bytes objects on
+#     connection corruption or threading issues. Instead of try-except that silently drops data,
+#     validate isinstance(chunk, bytes) and raise ChunkedEncodingError to trigger the existing
+#     retry loop with exponential backoff. This is the systemic fix - reuse existing retry
+#     infrastructure rather than adding silent error suppression.
 
