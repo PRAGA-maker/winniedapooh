@@ -223,7 +223,9 @@ class HttpClient:
             with self.semaphore:
                 self._wait_for_rate_limit()
                 try:
-                    response = self.session.request(method, url, auth=self.auth, **kwargs)
+                    # Add 60s timeout to prevent indefinite hangs
+                    timeout = kwargs.pop('timeout', 60)
+                    response = self.session.request(method, url, auth=self.auth, timeout=timeout, **kwargs)
                     
                     # Record successful request for usage tracking
                     if self.key_rotator:
@@ -236,7 +238,8 @@ class HttpClient:
                             # Update Authorization header with new token
                             self.session.headers.update({"Authorization": f"Token {self.key_rotator.get_current_token()}"})
                             # Backoff even with rotation to avoid tight retry loops
-                            wait_time = (base_backoff * (2 ** i)) + random.uniform(0, 1.0)
+                            # Cap at 300s (5 min) to prevent indefinite waits
+                            wait_time = min((base_backoff * (2 ** i)) + random.uniform(0, 1.0), 300)
                             logger.warning(
                                 f"Rate limited (429) on {path}. Retrying in {wait_time:.2f}s "
                                 f"with rotated key (attempt {i+1}/{max_retries})..."
@@ -245,7 +248,8 @@ class HttpClient:
                             continue
                         else:
                             # Exponential backoff for non-rotatable clients
-                            wait_time = (base_backoff * (2 ** i)) + random.uniform(0, 1.0)
+                            # Cap at 300s (5 min) to prevent indefinite waits
+                            wait_time = min((base_backoff * (2 ** i)) + random.uniform(0, 1.0), 300)
                             logger.warning(f"Rate limited (429) on {path}. Retrying in {wait_time:.2f}s (attempt {i+1}/{max_retries})...")
                             time.sleep(wait_time)
                             continue
@@ -268,7 +272,8 @@ class HttpClient:
                             should_retry = False
                     
                     if should_retry:
-                        wait_time = (base_backoff * (2 ** i)) + random.uniform(0, 1.0)
+                        # Cap at 300s (5 min) to prevent indefinite waits
+                        wait_time = min((base_backoff * (2 ** i)) + random.uniform(0, 1.0), 300)
                         logger.warning(f"Request to {path} failed: {e}. Retrying in {wait_time:.2f}s...")
                         time.sleep(wait_time)
                     else:
