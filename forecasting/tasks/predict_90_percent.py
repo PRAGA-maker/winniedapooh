@@ -24,11 +24,19 @@ class Predict90PercentTask(Task):
         self.min_history_points = min_history_points
     
     def _to_datetime(self, value: Any) -> Optional[datetime]:
+        """Convert value to timezone-naive datetime for consistent comparisons."""
+        if value is None:
+            return None
+        # Handle pandas Timestamp
+        if hasattr(value, 'to_pydatetime'):
+            dt = value.to_pydatetime()
+            return dt.replace(tzinfo=None) if dt.tzinfo else dt
         if isinstance(value, datetime):
-            return value
+            return value.replace(tzinfo=None) if value.tzinfo else value
         if isinstance(value, str):
             try:
-                return datetime.fromisoformat(value.replace("Z", "+00:00"))
+                dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                return dt.replace(tzinfo=None)
             except ValueError:
                 return None
         return None
@@ -65,7 +73,9 @@ class Predict90PercentTask(Task):
             return []
         
         # Calculate cutoff: 90% through market duration
-        end_time = record.end_time
+        end_time = self._to_datetime(record.end_time)
+        if end_time is None:
+            return []
         duration = end_time - first_ts
         cutoff_time = first_ts + (duration * 0.9)
 
@@ -141,3 +151,5 @@ class Predict90PercentTask(Task):
 # 1. Dynamic cutoff: Using 90% of duration gives more history than fixed week-out.
 # 2. Cross-option first_ts: Must scan all options for the true earliest timestamp.
 # 3. min_history_points: Use count-based threshold since duration varies wildly.
+# 4. Timezone handling: Pandas Timestamps and ISO strings have different tz-awareness.
+#    Always normalize to tz-naive via _to_datetime() before datetime arithmetic.

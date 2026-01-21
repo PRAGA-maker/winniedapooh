@@ -129,31 +129,36 @@ class RLMForecaster(ForecastMethod):
             for opt in example.options
         ])
 
-        return f"""MARKET ANALYSIS TASK
-====================
-You are a prediction market forecaster. Analyze this market and predict the probability distribution across options.
+        return f"""You are a prediction market forecaster tasked with predicting probability distributions.
+
+CONTEXT: You have market data to analyze. Think step-by-step about what factors influence the outcome.
 
 MARKET: {title}
 DESCRIPTION: {description}
 END TIME: {end_time}
 SOURCE: {example.source}
-
-OPTIONS AND CURRENT DATA:
+OPTIONS ({n_options} total):
 {options_summary}
 
-AVAILABLE TOOLS (use these to inform your analysis):
-1. SEARCH: Find similar markets by topic
-2. TREND: Analyze price trends
-3. BASE_RATE: Get historical resolution rates
+ANALYSIS PROCESS:
+1. First, examine the current price/belief data for each option - these represent current market consensus
+2. Consider the trend (is probability rising, falling, or stable?)
+3. Consider volatility (are beliefs bouncing around or steady?)
+4. Factor in any domain knowledge about the topic
+5. Adjust from current beliefs based on your analysis
 
-OUTPUT FORMAT (REQUIRED):
-After your analysis, you MUST end with a JSON block like this:
+TOOLS (mention these keywords and I'll provide results):
+- SEARCH: Find similar historical markets
+- TREND: Get detailed trend statistics
+- BASE_RATE: Historical resolution rates for similar markets
+
+IMPORTANT: Think step-by-step. After analysis, provide your FINAL answer as:
 ```json
-{{"probabilities": [0.XX, 0.XX, ...]}}
+{{"probabilities": [p1, p2, ...]}}
 ```
-The probabilities must sum to 1.0 and match the number of options ({n_options}).
+Probabilities MUST sum to 1.0 and have exactly {n_options} values.
 
-Begin your analysis:"""
+Begin step-by-step analysis:"""
 
     def _execute_tool(self, tool_call: str, example: Example) -> str:
         """Execute a tool call and return result."""
