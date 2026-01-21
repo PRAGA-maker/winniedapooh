@@ -132,7 +132,7 @@ def test_my_validation(latest_parquet_df):
 ```python
 def test_my_edge_case(tmp_path):
     """Test an edge case."""
-    from src.build_unified_parquet import CanonicalStore
+    from pipeline.orchestrator import CanonicalStore
     
     store = CanonicalStore(tmp_path / "test.db")
     # Your test logic here

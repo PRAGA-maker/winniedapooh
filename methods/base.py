@@ -1,5 +1,5 @@
 from typing import Any, Dict
-from dataobject.io_hygiene import Batch
+from forecasting.dataclasses import Batch
 
 
 class ForecastMethod:

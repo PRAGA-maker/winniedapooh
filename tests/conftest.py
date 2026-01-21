@@ -10,8 +10,8 @@ from datetime import date
 # Add project root to sys.path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.build_unified_parquet import CanonicalStore
-from src.common.config import config
+from pipeline.orchestrator import CanonicalStore
+from pipeline.common.config import config
 
 
 @pytest.fixture

@@ -9,6 +9,8 @@ __pycache__/
 /data/models/
 /data/outputs/
 .cursor/
+CLAUDE.md
+.claude/
 kalshi_key.pem
 *.pem
 *.db

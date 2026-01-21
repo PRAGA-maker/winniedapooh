@@ -3,7 +3,7 @@ import json
 import pandas as pd
 from typing import Optional
 from pathlib import Path
-from dataobject.dataset import EventDataset, DatasetView
+from forecasting.dataset import EventDataset, DatasetView
 
 class SplitManager:
     def __init__(self, dataset: EventDataset, splits_df: pd.DataFrame):

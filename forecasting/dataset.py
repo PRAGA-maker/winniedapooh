@@ -2,8 +2,8 @@ import json
 import pandas as pd
 from typing import Optional, List, Dict, Any
 from pathlib import Path
-from src.common.parquet import load_parquet_dataset
-from src.common.schema import EventRecord
+from pipeline.common.parquet import load_parquet_dataset
+from pipeline.common.schema import EventRecord
 
 class EventRecordWrapper:
     def __init__(self, data: Dict[str, Any]):

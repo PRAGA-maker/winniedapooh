@@ -13,14 +13,14 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_compl
 # Add project root to sys.path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from src.kalshi.grabber import KalshiGrabber
-from src.kalshi.bulk_grabber import KalshiBulkGrabber
-from src.kalshi.map_to_canonical import map_kalshi_market, map_kalshi_trade, map_kalshi_candle_bid_ask, build_kalshi_url
-from src.metaculus.grabber import MetaculusGrabber
-from src.metaculus.map_to_canonical import map_metaculus_question, map_metaculus_history_point
-from src.common.parquet import write_parquet_dataset
-from src.common.logging import logger
-from src.common.config import config
+from pipeline.kalshi.grabber import KalshiGrabber
+from pipeline.kalshi.bulk_grabber import KalshiBulkGrabber
+from pipeline.kalshi.map_to_canonical import map_kalshi_market, map_kalshi_trade, map_kalshi_candle_bid_ask, build_kalshi_url
+from pipeline.metaculus.grabber import MetaculusGrabber
+from pipeline.metaculus.map_to_canonical import map_metaculus_question, map_metaculus_history_point
+from pipeline.common.parquet import write_parquet_dataset
+from pipeline.common.logging import logger
+from pipeline.common.config import config
 
 def _map_s3_payout_type(payout_type: Optional[str]) -> str:
     if not payout_type:

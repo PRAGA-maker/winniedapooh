@@ -11,7 +11,7 @@ import sqlite3
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.build_unified_parquet import CanonicalStore
+from pipeline.orchestrator import CanonicalStore
 
 
 def test_canonical_store_init(tmp_path):

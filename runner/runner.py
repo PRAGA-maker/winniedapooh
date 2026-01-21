@@ -10,19 +10,13 @@ from typing import Dict, Any, List
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from dataobject.dataset import EventDataset
-from dataobject.splits import SplitManager
-from dataobject.tasks.resolve_binary import ResolveEventTask
-from dataobject.tasks.predict_week_out import PredictWeekOutTask
+from forecasting.dataset import EventDataset
+from forecasting.splits import SplitManager
+from forecasting.tasks.registry import build_task
 from methods.registry import build_method
 from runner.experiment import RunSpec
 from runner.evaluator import evaluate
 from runner.results_db import ResultsDatabase
-
-TASK_REGISTRY = {
-    "resolve_event": ResolveEventTask,
-    "predict_week_out": PredictWeekOutTask
-}
 
 def _ensure_dataset_available(data_dir: Path) -> Path:
     """
@@ -162,7 +156,7 @@ def run_experiment(spec: RunSpec):
     else:
         splits = SplitManager.build(dataset, seed=spec.seed)
         
-    task = TASK_REGISTRY[spec.task](**spec.task_params)
+    task = build_task(spec.task, spec.task_params)
     method = build_method(spec.method, spec.method_params)
     
     # 1. Training Phase

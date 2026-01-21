@@ -1,6 +1,6 @@
 from typing import List, Dict, Any
-from dataobject.dataset import EventRecordWrapper
-from dataobject.io_hygiene import Example, Batch
+from forecasting.dataset import EventRecordWrapper
+from forecasting.dataclasses import Example, Batch
 
 
 class Task:
@@ -11,8 +11,8 @@ class Task:
     and defines which metrics to compute.
     
     Examples:
-        See dataobject/tasks/resolve_binary.py for event-level resolution task.
-        See dataobject/tasks/predict_week_out.py for time-series prediction task.
+        See forecasting/tasks/resolve_binary.py for event-level resolution task.
+        See forecasting/tasks/predict_week_out.py for time-series prediction task.
     
     Testing Notes (2026-01):
         Developer experience testing: Creating a new task takes ~15 minutes.

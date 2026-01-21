@@ -2,7 +2,7 @@ import numpy as np
 from sklearn.neural_network import MLPRegressor
 from typing import Any, Dict, List, Optional
 from methods.base import ForecastMethod
-from dataobject.io_hygiene import Batch, Example
+from forecasting.dataclasses import Batch, Example
 import joblib
 from pathlib import Path
 

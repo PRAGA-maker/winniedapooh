@@ -4,10 +4,10 @@ Created for DX testing.
 """
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
-from dataobject.tasks.base import Task
-from dataobject.dataset import EventRecordWrapper
-from dataobject.io_hygiene import Example, OptionHistory
-from dataobject.metrics import multiclass_brier, multiclass_logloss
+from forecasting.tasks.base import Task
+from forecasting.dataset import EventRecordWrapper
+from forecasting.dataclasses import Example, OptionHistory
+from forecasting.metrics import multiclass_brier, multiclass_logloss
 
 
 class PredictWeekOutTask(Task):

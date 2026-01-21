@@ -5,7 +5,7 @@ Simple test method for DX evaluation.
 import numpy as np
 from typing import Dict, Any, List
 from methods.base import ForecastMethod
-from dataobject.io_hygiene import Batch
+from forecasting.dataclasses import Batch
 
 
 class RandomBaseline(ForecastMethod):

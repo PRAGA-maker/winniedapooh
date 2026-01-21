@@ -8,8 +8,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, utils
 from cryptography.hazmat.primitives import serialization
-from src.common.config import config
-from src.common.logging import logger
+from pipeline.common.config import config
+from pipeline.common.logging import logger
 
 class MetaculusKeyRotator:
     """

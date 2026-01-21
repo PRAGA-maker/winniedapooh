@@ -54,7 +54,7 @@ The pipeline normalizes data into two primary structures, stored in a unified
 Parquet format.
 
 A. EventRecord (The "Static" Info)
-Defined in `src/common/schema.py`.
+Defined in `pipeline/common/schema.py`.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -88,24 +88,31 @@ synthetic options (no orderbook), zero-volume markets, ultra-short-lived daily m
 3. CORE CLASSES & MODULES
 --------------------------------------------------------------------------------
 
-A. Data Handling (`dataobject/`)
+A. Data Handling (`forecasting/`)
 - `EventDataset`: Entry point for loading `.parquet` data.
 - `EventRecordWrapper`: Helper to access row data with validation.
 - `SplitManager`: Handles reproducible Train/Test/Bench splits via hashing on `event_id`.
 
-B. Task Definitions (`dataobject/tasks/`)
+B. Task Definitions (`forecasting/tasks/`)
 - `Task`: Abstract base class for defining prediction problems.
 - `ResolveEvent`: Multiclass resolution task over event options.
 - `Example`: A single data point (features + option histories + target distribution).
 - `Batch`: A collection of `Example` objects.
+- `registry.py`: Central factory for instantiating tasks.
 
-C. Forecasting Methods (`methods/`)
+C. Data Pipeline (`pipeline/`)
+- `orchestrator.py`: Main dataset building logic.
+- `common/`: Shared utilities (schema, config, http, parquet).
+- `kalshi/`: Kalshi-specific API grabbers and mapping.
+- `metaculus/`: Metaculus-specific API grabbers and mapping.
+
+D. Forecasting Methods (`methods/`)
 - `ForecastMethod`: Base class for all models/baselines. Supports `.fit()`, `.predict()`, `.save()`, `.load()`.
 - `LastPriceBaseline`: Simple baseline that predicts the most recent belief.
 - `MLPForecaster`: A simple Neural Network (MLP) trained on price history.
 - `registry.py`: Central factory for instantiating methods.
 
-D. Experiment Workflow (`runner/`)
+E. Experiment Workflow (`runner/`)
 - `RunSpec`: Serializable configuration for an experiment run.
 - `runner.py`: The primary CLI for orchestrating data loading, training, and evaluation.
 - `evaluator.py`: Computes metrics (multiclass Brier, LogLoss, etc.) per task.
@@ -124,12 +131,12 @@ A. Adding a New Forecasting Method
 4. **Register**: Add your class to `METHODS` in `methods/registry.py`.
 
 B. Adding a New Task
-1. **Create**: New file in `dataobject/tasks/` (e.g., `dataobject/tasks/my_task.py`).
+1. **Create**: New file in `forecasting/tasks/` (e.g., `forecasting/tasks/my_task.py`).
 2. **Subclass**: Inherit from `Task`.
 3. **Implement**:
    - `.make_examples(record, rng)`: Define how to turn an `EventRecord` into `Example` objects.
    - `.metric_fns()`: Return a dict of `{name: sklearn_metric_fn}`.
-4. **Register**: Add it to `TASK_REGISTRY` in `runner/runner.py`.
+4. **Register**: Add your class to `TASKS` in `forecasting/tasks/registry.py`.
 
 C. Experiment Artifacts
 All outputs are stored in `data/outputs/` (ignored by git). See `runner/results_db.py` for detailed output structure and indexing logic.
@@ -141,14 +148,16 @@ All outputs are stored in `data/outputs/` (ignored by git). See `runner/results_
 /
 ├── data/               # Local data storage (raw, clean parquets, outputs)
 │   └── outputs/        # Organized experiment artifacts (models, logs, plots, metrics)
-├── dataobject/         # Data models, tasks, and IO hygiene
-├── docs/               # Platform-specific documentation/metadata
+├── forecasting/        # Forecasting core: datasets, tasks, splits, metrics
+│   └── tasks/          # Task definitions and registry
+├── pipeline/           # Data pipeline for ingestion
+│   ├── common/         # Shared utils (schema, config, http, parquet)
+│   ├── kalshi/         # Kalshi-specific API grabbers and mapping
+│   └── metaculus/      # Metaculus-specific API grabbers and mapping
 ├── methods/            # Implementations of forecasting algorithms
 ├── runner/             # Experiment orchestration and evaluation
 ├── scripts/            # Data ingestion and inspection tools
-├── src/                # Core logic (normalization, API grabbers)
-│   ├── common/         # Shared utils (schema, config, http)
-│   ├── kalshi/         # Kalshi-specific mapping
-│   └── metaculus/      # Metaculus-specific mapping
+├── docs/               # Platform-specific documentation/metadata
+├── tests/              # Test suite
 ├── pyproject.toml      # Project dependencies and metadata
 └── README.md           # High-level overview

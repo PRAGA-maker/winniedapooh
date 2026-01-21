@@ -4,8 +4,8 @@ import pyarrow.parquet as pq
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Any
-from src.common.config import config
-from src.common.logging import logger
+from pipeline.common.config import config
+from pipeline.common.logging import logger
 
 def write_parquet_dataset(df: pd.DataFrame, dataset_name: str, version: str = None):
     """Write a dataframe to a versioned parquet dataset directory."""

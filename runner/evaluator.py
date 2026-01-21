@@ -1,8 +1,8 @@
 import random
 import numpy as np
 from typing import Any, Dict
-from dataobject.dataset import DatasetView
-from dataobject.tasks.base import Task
+from forecasting.dataset import DatasetView
+from forecasting.tasks.base import Task
 from methods.base import ForecastMethod
 from runner.experiment import RunSpec
 

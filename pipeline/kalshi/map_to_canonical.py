@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 from typing import Dict, Any, List, Optional
-from src.common.schema import TimeSeriesPoint, MarketType, MarketStatus
+from pipeline.common.schema import TimeSeriesPoint, MarketType, MarketStatus
 
 
 def _strip_year_suffix(ticker: str) -> str | None:

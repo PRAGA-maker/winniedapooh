@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 from typing import Dict, Any, List
-from src.common.schema import TimeSeriesPoint, MarketType, MarketStatus
+from pipeline.common.schema import TimeSeriesPoint, MarketType, MarketStatus
 
 def map_metaculus_question(raw_post: Dict[str, Any], raw_q: Dict[str, Any]) -> Dict[str, Any]:
     """Map raw Metaculus post/question JSON to canonical market record dict."""

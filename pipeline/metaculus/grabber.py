@@ -4,9 +4,9 @@ import json
 import os
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from src.common.http import get_metaculus_client
-from src.common.config import config
-from src.common.logging import logger
+from pipeline.common.http import get_metaculus_client
+from pipeline.common.config import config
+from pipeline.common.logging import logger
 
 class MetaculusGrabber:
     def __init__(self):

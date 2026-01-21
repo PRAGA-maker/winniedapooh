@@ -4,7 +4,7 @@ from pathlib import Path
 # Add project root to sys.path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from src.build_unified_parquet import build_unified_dataset
+from pipeline.orchestrator import build_unified_dataset
 
 if __name__ == "__main__":
     import argparse

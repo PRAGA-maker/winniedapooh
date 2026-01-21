@@ -2,9 +2,9 @@ import json
 import os
 from typing import List, Dict, Any, Optional
 import requests
-from src.common.http import get_kalshi_client
-from src.common.config import config
-from src.common.logging import logger
+from pipeline.common.http import get_kalshi_client
+from pipeline.common.config import config
+from pipeline.common.logging import logger
 
 class KalshiGrabber:
     def __init__(self, markets_batch_size: int = 50, markets_url_length_limit: int = 7500):

@@ -1,6 +1,6 @@
 from typing import List, Dict, Any
 from methods.base import ForecastMethod
-from dataobject.io_hygiene import Batch
+from forecasting.dataclasses import Batch
 
 class LastPriceBaseline(ForecastMethod):
     name = "last_price"
