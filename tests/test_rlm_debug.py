@@ -90,7 +90,7 @@ def test_repl_sandbox():
     return True
 
 
-def debug_rlm(n: int = 3, verbose: bool = True, model: str = "gemini-3-pro"):
+def debug_rlm(n: int = 3, verbose: bool = True, model: str = "gemini-2.0-flash"):
     """
     Run RLM on n examples with full verbose output.
 
@@ -153,6 +153,12 @@ def debug_rlm(n: int = 3, verbose: bool = True, model: str = "gemini-3-pro"):
 
     call_budget = max(100, n * 20)
 
+    # Get parquet path from dataset
+    parquet_file = dataset_path / "data.parquet"
+    if not parquet_file.exists():
+        print(f"WARNING: Parquet file not found at {parquet_file}")
+        parquet_file = None
+
     rlm = RLMForecaster(
         model=model,
         max_iterations=10,
@@ -160,6 +166,7 @@ def debug_rlm(n: int = 3, verbose: bool = True, model: str = "gemini-3-pro"):
         verbose=verbose,
         use_repl=True,
         diagnostic_mode=True,  # Enable logging to data/outputs/rlm_diagnostics_*.log
+        parquet_path=str(parquet_file) if parquet_file else None,
     )
 
     # Build search index
@@ -239,7 +246,10 @@ def debug_rlm(n: int = 3, verbose: bool = True, model: str = "gemini-3-pro"):
     print(f"\nAVERAGE BRIER:")
     print(f"  RLM:      {avg_brier_rlm:.6f}")
     print(f"  Baseline: {avg_brier_baseline:.6f}")
-    print(f"  Ratio:    {avg_brier_rlm / avg_brier_baseline:.2f}x")
+    if avg_brier_baseline > 0:
+        print(f"  Ratio:    {avg_brier_rlm / avg_brier_baseline:.2f}x")
+    else:
+        print(f"  Ratio:    N/A (baseline is 0)")
     print(f"  Win rate: {rlm_wins}/{len(examples)} ({100*rlm_wins/len(examples):.0f}%)")
 
     stats = rlm.get_usage_stats()
@@ -258,7 +268,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Debug RLM on small sample")
     parser.add_argument("--n", type=int, default=3, help="Number of examples")
     parser.add_argument("--verbose", action="store_true", help="Verbose output")
-    parser.add_argument("--model", type=str, default="gemini-3-pro", help="Model to use")
+    parser.add_argument("--model", type=str, default="gemini-2.0-flash", help="Model to use")
     args = parser.parse_args()
 
     debug_rlm(n=args.n, verbose=args.verbose, model=args.model)
@@ -309,7 +319,34 @@ if __name__ == "__main__":
 # - Logs include: raw response, code blocks found, extraction success
 #
 # USAGE WITH DIAGNOSTICS:
-# rlm = RLMForecaster(model='gemini-3-pro', diagnostic_mode=True)
+# rlm = RLMForecaster(model='gemini-2.0-flash', diagnostic_mode=True)
+#
+# 2026-01-22 MODEL AVAILABILITY INVESTIGATION (CRITICAL):
+#
+# GEMINI-3 MODELS HAVE WIDESPREAD 500 ERRORS:
+# - gemini-3-flash-preview and gemini-3-pro-preview are experiencing server-side
+#   capacity issues causing 500 INTERNAL errors
+# - This is a SERVICE issue, NOT a code issue (model names are correct)
+# - Community reports: 45% of errors are 503 "model overloaded" on preview models
+# - See: https://support.google.com/gemini/thread/396753722
+# - See: https://discuss.google.dev/t/internal-error-responses-from-gemini-3-pro-flash/301242
+#
+# WORKAROUND:
+# - Use gemini-2.0-flash-exp (maps to "gemini-2.0-flash" in MODELS dict)
+# - This is stable and has no 500 errors
+# - Once Gemini-3 capacity stabilizes, switch back to gemini-3-flash-preview
+#
+# RLM INFRASTRUCTURE VERIFIED:
+# - Fallback rate: 0.0% (RLM executes successfully!)
+# - Code blocks: 1.00 avg (model writes ```repl blocks)
+# - API calls: 11 (multi-iteration reasoning works)
+# - Prediction: Real predictions, not baseline fallback
+#
+# CURRENT ISSUE: MODEL MAKES INCORRECT ASSUMPTIONS
+# - Model tries to access market_metadata['title'] which doesn't exist
+# - Model doesn't query parquet file before accessing data
+# - Hypothesis: Model needs parquet schema (cols + types + descriptions) in prompt
+# - Next: Add schema documentation so model knows what's queryable
 #
 # 2026-01-21 DATASET AND API FINDINGS:
 #

@@ -134,6 +134,52 @@ def test_repl_sandbox():
     return True
 
 
+def test_url_normalization():
+    """Test URL normalization for deduplication."""
+    print("\n[3.5/5] Testing URL normalization...")
+
+    from methods.full_recursive.pipeline import normalize_url
+
+    # Test stripping tracking parameters
+    url_with_utm = "https://example.com/article?utm_source=twitter&utm_medium=social"
+    normalized = normalize_url(url_with_utm)
+    if "utm_source" not in normalized and "example.com/article" in normalized:
+        print("  - Strip UTM params: OK")
+    else:
+        print(f"  - Strip UTM params: FAILED ({normalized})")
+        return False
+
+    # Test trailing slash removal
+    url_with_slash = "https://example.com/article/"
+    normalized = normalize_url(url_with_slash)
+    if not normalized.endswith("/article/"):
+        print("  - Strip trailing slash: OK")
+    else:
+        print(f"  - Strip trailing slash: FAILED ({normalized})")
+        return False
+
+    # Test domain lowercasing
+    url_upper = "https://EXAMPLE.COM/Article"
+    normalized = normalize_url(url_upper)
+    if "example.com" in normalized:
+        print("  - Lowercase domain: OK")
+    else:
+        print(f"  - Lowercase domain: FAILED ({normalized})")
+        return False
+
+    # Test fragment removal
+    url_with_fragment = "https://example.com/article#section1"
+    normalized = normalize_url(url_with_fragment)
+    if "#" not in normalized:
+        print("  - Strip fragment: OK")
+    else:
+        print(f"  - Strip fragment: FAILED ({normalized})")
+        return False
+
+    print("  URL normalization working correctly!")
+    return True
+
+
 def test_prompt_building():
     """Test that prompts are built correctly."""
     print("\n[4/5] Testing prompt building...")
@@ -193,6 +239,41 @@ def test_prompt_building():
     else:
         print("  - Advocate prompt: FAILED")
 
+    # Test seen_urls deduplication in analyst prompt
+    seen_urls = {
+        "https://example.com/article1",
+        "https://example.com/article2",
+    }
+    analyst_prompt_with_seen = build_analyst_prompt(
+        market_title="Will it rain tomorrow?",
+        sub_questions=sub_questions,
+        time_range=("2024-01-01", "2024-01-15"),
+        research_cutoff="2024-01-14",
+        seen_urls=seen_urls,
+    )
+
+    if "ALREADY CITED SOURCES" in analyst_prompt_with_seen and "example.com/article1" in analyst_prompt_with_seen:
+        print("  - Analyst seen_urls dedup: OK")
+    else:
+        print("  - Analyst seen_urls dedup: FAILED")
+        return False
+
+    # Test seen_urls deduplication in advocate prompt
+    advocate_prompt_with_seen = build_advocate_prompt(
+        market_title="Will it rain tomorrow?",
+        sub_questions=sub_questions,
+        position="YES",
+        time_range=("2024-01-01", "2024-01-15"),
+        research_cutoff="2024-01-14",
+        seen_urls=seen_urls,
+    )
+
+    if "ALREADY CITED SOURCES" in advocate_prompt_with_seen and "example.com/article2" in advocate_prompt_with_seen:
+        print("  - Advocate seen_urls dedup: OK")
+    else:
+        print("  - Advocate seen_urls dedup: FAILED")
+        return False
+
     print("  All prompts building correctly!")
     return True
 
@@ -227,15 +308,17 @@ def test_full_pipeline(
 
     # Load data
     from forecasting.dataset import EventDataset
-    from forecasting.tasks.predict_90_percent import Predict90Percent
+    from forecasting.tasks.predict_90_percent import Predict90PercentTask
 
-    dataset = EventDataset(str(latest_parquet))
-    task = Predict90Percent(relax_status=True, min_history_points=5)
+    dataset = EventDataset.load(str(latest_parquet))
+    task = Predict90PercentTask(relax_status=True, min_history_points=5)
 
     # Get examples
     from forecasting.splits import SplitManager
-    splits = SplitManager(dataset)
-    test_records = list(splits.test_records())[:n_samples * 5]  # Get extra in case some fail
+    splits = SplitManager.build(dataset, seed=42)
+    test_view = splits.view("test")
+    test_records = [dataset.get_record(eid, src) for eid, src in zip(test_view.df["event_id"], test_view.df["source"])]
+    test_records = test_records[:n_samples * 5]  # Get extra in case some fail
 
     examples = []
     for record in test_records:
@@ -320,6 +403,7 @@ def main():
     results.append(("Imports", test_imports()))
     results.append(("API Key", test_api_key()))
     results.append(("REPL Sandbox", test_repl_sandbox()))
+    results.append(("URL Normalization", test_url_normalization()))
     results.append(("Prompt Building", test_prompt_building()))
     results.append(("Full Pipeline", test_full_pipeline(
         n_samples=args.n,

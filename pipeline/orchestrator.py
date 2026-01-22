@@ -950,69 +950,46 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
 
         logger.info(f"Filtering complete: {len(active_tickers)} active tickers identified.")
 
-        # STEP B2: Build event -> markets mapping for deduplication
-        # Kalshi creates ~1,000 contract variants per event (different strike prices, dates, etc.)
-        # All share the same event-level title/description, so we only need to enrich ONE per event
-        from collections import defaultdict
-        markets_by_event = defaultdict(list)
-        for ticker in active_tickers:
-            event_id = vitals_map[ticker].get("report_ticker") or ticker
-            markets_by_event[event_id].append(ticker)
-
-        logger.info(f"Event grouping: {len(active_tickers):,} markets -> {len(markets_by_event):,} unique events (avg {len(active_tickers)/max(1,len(markets_by_event)):.0f} markets/event)")
-        
         # STEP C: Pre-populate with S3 Minimal Metadata (Zero API calls)
         if active_tickers:
-            # Pre-populate for ALL active tickers (both ones we'll enrich and ones we won't)
             all_to_populate = active_tickers if limit is None else active_tickers[:limit] if limit else active_tickers
             logger.info(f"Pre-populating DB with S3 metadata for {len(all_to_populate)} tickers...")
             s3_metadata_batch = {}
             for t in all_to_populate:
                 v = vitals_map[t]
-                # Map S3 vitals to a basic MarketRecord
                 s3_status = v.get("last_status")
                 canonical_status = _map_s3_status(s3_status)
                 event_id = v.get("report_ticker")
                 payout_type = v.get("payout_type")
                 market_type = _map_s3_payout_type(payout_type)
                 options = _s3_answer_options(market_type)
-                
+
                 s3_metadata_batch[t] = {
                     "source": "kalshi",
                     "market_id": t,
                     "event_id": event_id,
-                    "title": t, # Fallback title
+                    "title": t,
                     "description": "",
                     "url": build_kalshi_url(t, event_id),
                     "market_type": market_type,
                     "answer_options_json": json.dumps(options),
-                    "end_time": v["last_date"], # Fallback
+                    "end_time": v["last_date"],
                     "status": canonical_status
                 }
             store.save_batch("kalshi", s3_metadata_batch, {})
 
-            # STEP D: Event-Level API Enrichment (1 market per event)
-            # Instead of enriching every market, we only enrich ONE representative per event
-            # and copy the metadata (title, description) to all sibling markets in that event.
-            # This reduces API calls from ~1.3M to ~12K for 12M markets (99.9% reduction).
-            needs_enrichment = set(store.get_market_ids_needing_enrichment("kalshi"))
-
-            # Find which EVENTS need enrichment (check if any market in event needs it)
-            events_needing_enrichment = []
-            for event_id, tickers in markets_by_event.items():
-                if any(t in needs_enrichment for t in tickers):
-                    events_needing_enrichment.append(event_id)
-
-            # Pick ONE representative market per event (first in list)
-            representative_tickers = [markets_by_event[e][0] for e in events_needing_enrichment]
+            # STEP D: Full API Enrichment (100% coverage)
+            # Enrich EVERY market via API to get correct title and description.
+            # This is slower but ensures data quality - no incorrect propagation.
+            needs_enrichment = list(store.get_market_ids_needing_enrichment("kalshi"))
             if limit:
-                representative_tickers = representative_tickers[:limit]
+                needs_enrichment = needs_enrichment[:limit]
 
-            logger.info(f"Event dedup: {len(needs_enrichment):,} markets needing enrichment -> {len(representative_tickers):,} event representatives")
+            logger.info(f"Full enrichment: {len(needs_enrichment):,} markets need API enrichment")
 
             api_metadata_batch = {}
-            if representative_tickers:
-                new_markets = kalshi_grabber.fetch_markets(tickers=representative_tickers)
+            if needs_enrichment:
+                new_markets = kalshi_grabber.fetch_markets(tickers=needs_enrichment)
                 found_tickers = set()
                 for m in new_markets:
                     try:
@@ -1024,47 +1001,14 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
 
                 if api_metadata_batch:
                     store.save_batch("kalshi", api_metadata_batch, {})
-                    logger.info(f"Enriched {len(api_metadata_batch)} event representatives via API")
+                    logger.info(f"Enriched {len(api_metadata_batch):,} markets via API")
 
-                missing_from_api = [t for t in representative_tickers if t not in found_tickers]
+                missing_from_api = [t for t in needs_enrichment if t not in found_tickers]
                 if missing_from_api:
                     store.update_market_urls("kalshi", {t: "" for t in missing_from_api})
-                    logger.info(f"Marked {len(missing_from_api)} representatives with empty URLs (API missing).")
+                    logger.info(f"Marked {len(missing_from_api)} markets with empty URLs (API missing).")
             else:
-                logger.info("No events need API enrichment.")
-
-            # STEP E: Copy metadata to sibling markets (propagate from representative)
-            # For each event with enriched metadata, copy ONLY event-level fields to siblings
-            # IMPORTANT: Do NOT propagate title - title is market-specific (e.g., "Will Akron win" vs "Will Duke win")
-            # Only propagate: description (rules), market_type, end_time
-            sibling_count = 0
-            sibling_records = {}
-            for event_id in events_needing_enrichment:
-                tickers = markets_by_event[event_id]
-                primary = tickers[0]
-
-                if primary in api_metadata_batch:
-                    primary_meta = api_metadata_batch[primary]
-
-                    for sibling in tickers[1:]:  # Skip the primary (already saved)
-                        # Copy event-level fields ONLY - keep market-specific title and URL
-                        sibling_records[sibling] = {
-                            "source": "kalshi",
-                            "market_id": sibling,
-                            "event_id": event_id,
-                            "title": sibling,  # Keep ticker as title (market-specific, not event-level)
-                            "description": primary_meta.get("description"),  # Event-level rules (shared)
-                            "url": build_kalshi_url(sibling, event_id),
-                            "market_type": primary_meta.get("market_type"),
-                            "answer_options_json": primary_meta.get("answer_options_json"),
-                            "end_time": primary_meta.get("end_time"),
-                            "status": vitals_map.get(sibling, {}).get("last_status", "unknown"),
-                        }
-                        sibling_count += 1
-
-            if sibling_records:
-                store.save_batch("kalshi", sibling_records, {})
-                logger.info(f"Propagated metadata to {sibling_count:,} sibling markets")
+                logger.info("No markets need API enrichment.")
         
         # STEP F: History Ingestion
         current_date = start_date
@@ -1631,21 +1575,17 @@ if __name__ == "__main__":
 #     zero-yes resolution path must set derived_from_market_id to a representative parent market
 #     (use the first option's market_id, fallback to event_id). This preserves traceability and
 #     keeps schema validation passing.
-# 48. EVENT-LEVEL DEDUPLICATION (2026-01-21): MASSIVE OPTIMIZATION! Kalshi creates ~1,000 contract
-#     variants per event (different strike prices, dates, etc.). Instead of enriching EVERY market
-#     via API, we now:
-#     (1) Build event->markets mapping from S3 vitals (report_ticker field)
-#     (2) Pick ONE representative market per event for API enrichment
-#     (3) Propagate ONLY event-level metadata (description/rules) to sibling markets
-#     Results from Dec 2025 test: 2,627,015 markets -> 3,636 unique events (723 markets/event avg).
-#     API enrichment went from ~26 HOURS to ~30 SECONDS (99.9% reduction in API calls).
-#     Key insight: report_ticker in S3 vitals is the event grouping key. Markets with NULL
-#     report_ticker fall back to using ticker as event_id (each becomes its own "event").
-# 49. TITLE VS DESCRIPTION SEMANTICS (2026-01-21): CRITICAL DISTINCTION! Kalshi API returns:
-#     - title: MARKET-SPECIFIC (e.g., "Will Akron win..." vs "Will Duke win..." for different markets)
-#     - description (rules_primary): EVENT-LEVEL (shared rules like "If || Team || wins...")
-#     Initial dedup implementation incorrectly propagated title to siblings, causing data corruption
-#     (all March Madness markets showed "Will Auburn win..." regardless of actual team).
-#     FIX: Only propagate description (rules), NOT title. Sibling markets keep ticker as title.
-#     Trade-off: Siblings have less human-readable titles (ticker) but data is ACCURATE.
-#     Verified: 69 unique titles for 69 KXMARMAD markets (vs 1 before fix).
+# 48. EVENT-LEVEL DEDUPLICATION REVERTED (2026-01-22): Attempted optimization that FAILED.
+#     The idea was to pick ONE representative per event and propagate metadata to siblings.
+#     PROBLEM: Both title AND description are MARKET-SPECIFIC, not event-level!
+#     - title: "Will Akron win..." vs "Will Duke win..." (different per market)
+#     - description: "If Akron qualifies..." vs "If Duke qualifies..." (ALSO different per market)
+#     Result: 99.7% of markets in dedup DB had WRONG descriptions (e.g., AOC market said "Newsom").
+#     REVERTED to 100% enrichment - every market gets its own API call. Slower but CORRECT.
+#     Trade-off: ~80h API time for 1 year vs ~30s with dedup, but data quality > speed.
+# 49. DESCRIPTION IS MARKET-SPECIFIC (2026-01-22): CRITICAL FINDING that killed event dedup.
+#     Kalshi's rules_primary field contains market-specific text, NOT event-level templates.
+#     API experiment confirmed: KXMAKEMARMAD-26-DUKE returns "If Duke qualifies..." while
+#     KXMAKEMARMAD-26-ARK returns "If Arkansas qualifies..." - each sibling has unique rules.
+#     This means description CANNOT be propagated from representative to siblings.
+#     The only correct approach is 100% API enrichment for every market.

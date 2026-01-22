@@ -1,0 +1,50 @@
+API key present: True
+API key length: 39
+
+============================================================
+Testing context building
+============================================================
+Context keys: ['market_id', 'title', 'option_count', 'cutoff_ts']
+Context: {'market_id': 'test_market', 'title': 'Will it rain tomorrow?', 'option_count': 2, 'cutoff_ts': '2024-12-15 12:00'}
+
+============================================================
+Testing setup code
+============================================================
+Setup code length: 5080 chars
+
+First 800 chars:
+
+# ============================================================
+# RLM Forecaster Dynamic Helper Functions
+# Functions query data ON-DEMAND, not pre-computed
+# ============================================================
+
+import json
+import numpy as np
+
+# Serialized data for on-demand access
+_example_data = json.loads('{"event_id": "test_market", "static_features": {"title": "Will it rain tomorrow?", "description": "A simple test market about weather", "end_time": "2024-12-16T00:00:00"}, "options": [{"title": "Yes", "history_belief": [0.3, 0.4, 0.5], "history_ts": ["2024-12-01T00:00:00", "2024-12-02T00:00:00", "2024-12-03T00:00:00"]}, {"title": "No", "history_belief": [0.7, 0.6, 0.5], "history_ts": ["2024-12-01T00:00:00", "2024-12-02T00:00:00", "2024-12-03T00:00:00"]}]}')
+_search_index_info
+
+============================================================
+Testing RLM initialization
+============================================================
+[SUCCESS] RLMForecaster initialized
+
+============================================================
+Building search index
+============================================================
+[SUCCESS] Search index built
+
+============================================================
+Running prediction
+============================================================
+[SUCCESS] Prediction: [0.5, 0.5]
+Fallback used: True
+API calls: 0
+Code blocks: 0
+Iterations: 0
+
+============================================================
+Test completed successfully!
+============================================================

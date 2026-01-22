@@ -112,6 +112,16 @@ PRO_MODEL_CONFIG = PipelineConfig(
     verbose=True,
 )
 
+# FLASH_MODEL: Use gemini-3-flash for testing/development (higher rate limits)
+# Good for: Testing when pro rate limits hit, rapid iteration, development
+FLASH_MODEL_CONFIG = PipelineConfig(
+    model="gemini-3-flash",
+    max_iterations=5,
+    confidence_threshold=0.7,
+    data_analyst_parallel=True,
+    verbose=True,
+)
+
 
 # =============================================================================
 # Preset Registry
@@ -123,6 +133,7 @@ PRESETS: Dict[str, PipelineConfig] = {
     "thorough": THOROUGH_CONFIG,
     "sequential": ABLATION_SEQUENTIAL_CONFIG,
     "pro": PRO_MODEL_CONFIG,
+    "flash": FLASH_MODEL_CONFIG,
 }
 
 
@@ -139,6 +150,7 @@ def list_presets() -> Dict[str, str]:
         "thorough": "Thorough analysis (7 iterations, 80% threshold)",
         "sequential": "DATA_ANALYST in sequential mode (ablation)",
         "pro": "Use gemini-3-pro model for higher quality",
+        "flash": "Use gemini-3-flash model (higher rate limits for testing)",
     }
 
 
@@ -175,6 +187,7 @@ def get_cli_params(preset_name: str) -> str:
 # - "thorough": Research, high-stakes predictions
 # - "sequential": Ablation studies comparing timing modes
 # - "pro": When you need the best model available
+# - "flash": When pro rate limits hit; gemini-3-flash has higher limits
 #
 # TEMPERATURE NOTES:
 # - Lower temperature (0.3-0.5) for factual agents (analyst, verifier)
@@ -191,4 +204,13 @@ def get_cli_params(preset_name: str) -> str:
 # - wayback_timeout_seconds: 10s balances reliability vs speed
 # - wayback_rate_limit: 0.2s (200ms) prevents 429 errors from archive.org
 # - Disable with: --method-params '{"wayback_enabled": false}'
+#
+# FLASH PRESET (added 2026-01-22):
+# - gemini-3-flash has significantly higher rate limits than gemini-3-pro
+# - Use when pro rate limits are hit during development/testing
+# - Quality may be slightly lower but good enough for iteration
+# - Cost: ~$0.004 per prediction (vs ~$0.02 for pro)
+# - Latency: ~4 min per prediction with 2 iterations
+# - Example: uv run runner/runner.py --method full_recursive \
+#            --method-params '{"model": "gemini-3-flash"}'
 #

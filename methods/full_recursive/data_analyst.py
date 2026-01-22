@@ -355,11 +355,31 @@ def run_data_analyst(
             temperature=0.5,
         )
 
-        response = client.models.generate_content(
-            model=model,
-            contents=contents,
-            config=config,
-        )
+        # Call Gemini with exponential backoff for rate limits
+        max_retries = 3
+        response = None
+        for attempt in range(max_retries):
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=contents,
+                    config=config,
+                )
+                break
+            except Exception as e:
+                error_str = str(e).lower()
+                if "rate" in error_str or "429" in error_str or "quota" in error_str or "resource exhausted" in error_str:
+                    wait_time = (2 ** attempt) + (0.5 * attempt)
+                    if verbose:
+                        print(f"[DATA_ANALYST] Rate limit hit, retrying in {wait_time:.1f}s (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(wait_time)
+                    if attempt == max_retries - 1:
+                        raise
+                else:
+                    raise
+
+        if response is None:
+            raise RuntimeError("Gemini API call failed after all retries")
 
         response_text = response.text if response.text else ""
         raw_responses.append(response_text)
@@ -509,9 +529,43 @@ def run_data_analyst(
 # 1. More structured output format (DataAnalystOutput dataclass)
 # 2. Designed to complement web research, not replace it
 # 3. Focused on quantitative factors, base rates, trends
+# 4. NO dependency on external/rlm library (custom DataAnalystREPL)
+# 5. Simpler REPL (no llm_query overhead)
 #
 # ERROR HANDLING:
 # 1. Max iterations fallback with partial output
 # 2. REPL errors captured in stderr
 # 3. LLMCallLog tracks execution details
+#
+# =============================================================================
+# 2026-01-22 RLM Alignment Updates:
+# =============================================================================
+#
+# CHANGES FROM RLM ANALYSIS:
+# 1. Added ```repl emphasis to DATA_ANALYST_SYSTEM_PROMPT
+#    - Models often default to ```python which doesn't execute
+#    - Explicit warning: "You MUST use ```repl code blocks for ALL code execution"
+#    - Location: methods/full_recursive/prompts.py
+#
+# 2. Added exponential backoff for rate limits (lines 358-377)
+#    - Pattern: (2 ** attempt) + (0.5 * attempt) seconds
+#    - Retries: 3 attempts for rate/quota/429 errors
+#    - Non-retryable errors raised immediately
+#    - Prevents API quota exhaustion on large runs
+#
+# 3. Code block parsing already correct (line 371)
+#    - Handles both ```repl and ```python blocks
+#    - No update needed
+#
+# INTENTIONAL DIVERGENCE FROM STANDALONE RLM:
+# - No external/rlm dependency (custom REPL is lighter weight)
+# - No llm_query() (adds latency, not needed for quantitative work)
+# - No parquet file access (uses focused context, not full dataset)
+# - No RLMDiagnostics (pipeline has FullRecursiveLogger)
+#
+# SHARED WITH RLM:
+# - methods/rlm_tools/semantic_search.py (MarketSearchIndex)
+# - methods/rlm_tools/data_analysis.py (analyze_trend)
+#
+# See .claude/FULL_RECURSIVE_HANDOFF.md for full architecture analysis
 #

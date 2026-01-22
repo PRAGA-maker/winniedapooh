@@ -20,7 +20,8 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
+from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
 from forecasting.dataclasses import Example
 from methods.rlm_tools.semantic_search import MarketSearchIndex
@@ -41,6 +42,8 @@ from .agents import (
     run_advocate,
     run_verifier,
     run_synthesizer,
+    run_analyst_async,
+    run_advocate_async,
 )
 from .data_analyst import DataAnalystOutput, run_data_analyst
 from .wayback_validator import WaybackValidator, ValidationResult, validate_citations_sync
@@ -288,6 +291,68 @@ class PipelineLogger:
 # Helper Functions
 # =============================================================================
 
+# Tracking parameters commonly added to URLs (strip for normalization)
+TRACKING_PARAMS = {
+    'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+    'fbclid', 'gclid', 'ref', 'source', 'mc_cid', 'mc_eid',
+    '_ga', '_gl', 'hsCtaTracking', 'mkt_tok',
+}
+
+
+def normalize_url(url: str) -> str:
+    """
+    Normalize a URL for deduplication purposes.
+
+    - Strips tracking parameters (utm_*, fbclid, etc.)
+    - Removes trailing slashes
+    - Lowercases the domain
+    - Removes fragments (#section)
+
+    Returns the normalized URL string.
+    """
+    from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
+
+    if not url:
+        return ""
+
+    try:
+        parsed = urlparse(url)
+
+        # Lowercase the domain
+        netloc = parsed.netloc.lower()
+
+        # Strip tracking params from query string
+        if parsed.query:
+            params = parse_qs(parsed.query, keep_blank_values=True)
+            filtered_params = {
+                k: v for k, v in params.items()
+                if k.lower() not in TRACKING_PARAMS
+            }
+            query = urlencode(filtered_params, doseq=True)
+        else:
+            query = ""
+
+        # Remove trailing slash from path
+        path = parsed.path.rstrip('/')
+        if not path:
+            path = ""
+
+        # Rebuild URL without fragment
+        normalized = urlunparse((
+            parsed.scheme,
+            netloc,
+            path,
+            parsed.params,
+            query,
+            ""  # No fragment
+        ))
+
+        return normalized
+    except Exception:
+        # If parsing fails, return original
+        return url
+
+
 def detect_notable_moves(example: Example, threshold: float = 0.05) -> List[Dict]:
     """Detect notable price moves from example history."""
     moves = []
@@ -415,6 +480,9 @@ class FullRecursivePipeline:
         self.client = GeminiAgentClient(api_key, model, verbose)
         self._logger: Optional["FullRecursiveLogger"] = None
 
+        # Track URLs seen across iterations (for deduplication)
+        self.seen_urls: Set[str] = set()
+
         # Initialize Wayback validator
         self.wayback_validator = WaybackValidator(
             enabled=wayback_enabled,
@@ -486,6 +554,9 @@ class FullRecursivePipeline:
             print(f"DATA_ANALYST mode: {'parallel' if self.data_analyst_parallel else 'sequential'}")
             print()
 
+        # Reset seen URLs for new run
+        self.seen_urls = set()
+
         # Run iterative loop
         iteration_history: List[IterationResult] = []
         feedback: Optional[str] = None
@@ -504,9 +575,20 @@ class FullRecursivePipeline:
                 notable_moves=notable_moves,
                 iteration=iteration,
                 previous_feedback=feedback,
+                seen_urls=self.seen_urls,
             )
 
             iteration_history.append(iter_result)
+
+            # Collect URLs from this iteration for deduplication in next iterations
+            iter_urls = self._collect_iteration_urls(
+                iter_result.analyst_output,
+                iter_result.advocate_yes_output,
+                iter_result.advocate_no_output,
+            )
+            self.seen_urls.update(iter_urls)
+            if self.verbose and iter_urls:
+                print(f"[DEDUP] Collected {len(iter_urls)} unique URLs, total seen: {len(self.seen_urls)}")
 
             # Log iteration if logger is active
             if self._logger:
@@ -619,6 +701,48 @@ class FullRecursivePipeline:
             add_citations(advocate_no_out.all_sources_used, "advocate_no")
 
         return citations
+
+    def _collect_iteration_urls(
+        self,
+        analyst_out: Optional[AnalystOutput],
+        advocate_yes_out: Optional[AdvocateOutput],
+        advocate_no_out: Optional[AdvocateOutput],
+    ) -> Set[str]:
+        """
+        Collect and normalize all URLs from an iteration's agent outputs.
+
+        Used to track what URLs have been seen across iterations for deduplication.
+        """
+        urls: Set[str] = set()
+
+        def add_url(url: str):
+            if url:
+                normalized = normalize_url(url)
+                if normalized:
+                    urls.add(normalized)
+
+        # Collect from analyst
+        if analyst_out:
+            for answer in analyst_out.answers:
+                for c in answer.citations:
+                    add_url(c.url)
+            for c in analyst_out.all_sources_used:
+                add_url(c.url)
+
+        # Collect from advocates
+        if advocate_yes_out:
+            for evidence in advocate_yes_out.primary_evidence:
+                add_url(evidence.source.url)
+            for c in advocate_yes_out.all_sources_used:
+                add_url(c.url)
+
+        if advocate_no_out:
+            for evidence in advocate_no_out.primary_evidence:
+                add_url(evidence.source.url)
+            for c in advocate_no_out.all_sources_used:
+                add_url(c.url)
+
+        return urls
 
     def _annotate_citations(
         self,
@@ -735,6 +859,7 @@ class FullRecursivePipeline:
         notable_moves: List[Dict],
         iteration: int,
         previous_feedback: Optional[str],
+        seen_urls: Optional[Set[str]] = None,
     ) -> IterationResult:
         """Run a single pipeline iteration."""
         result = IterationResult(iteration=iteration)
@@ -767,31 +892,32 @@ class FullRecursivePipeline:
         if self.verbose:
             print(f"[PLANNER] Generated {len(planner_out.sub_questions)} sub-questions")
 
-        # 2. PARALLEL PHASE
+        # 2. PARALLEL PHASE (using asyncio for true concurrent execution)
         if self.verbose:
-            print("[PARALLEL] Running Analyst + Advocates...")
+            print("[PARALLEL] Running Analyst + Advocates (async)...")
 
-        # Run web agents (always parallel)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-            analyst_future = executor.submit(
-                run_analyst,
+        # Run web agents in parallel using asyncio.gather()
+        async def _run_parallel_agents():
+            """Run analyst and advocates concurrently."""
+            analyst_task = run_analyst_async(
                 self.client, market_title, planner_out.sub_questions,
-                time_range, research_cutoff, iteration
+                time_range, research_cutoff, iteration, seen_urls
             )
-            advocate_yes_future = executor.submit(
-                run_advocate,
+            advocate_yes_task = run_advocate_async(
                 self.client, market_title, planner_out.sub_questions,
-                "YES", time_range, research_cutoff, iteration
+                "YES", time_range, research_cutoff, iteration, seen_urls
             )
-            advocate_no_future = executor.submit(
-                run_advocate,
+            advocate_no_task = run_advocate_async(
                 self.client, market_title, planner_out.sub_questions,
-                "NO", time_range, research_cutoff, iteration
+                "NO", time_range, research_cutoff, iteration, seen_urls
             )
 
-            analyst_out, analyst_log = analyst_future.result()
-            advocate_yes_out, advocate_yes_log = advocate_yes_future.result()
-            advocate_no_out, advocate_no_log = advocate_no_future.result()
+            return await asyncio.gather(
+                analyst_task, advocate_yes_task, advocate_no_task
+            )
+
+        # Execute the async parallel phase
+        (analyst_out, analyst_log), (advocate_yes_out, advocate_yes_log), (advocate_no_out, advocate_no_log) = asyncio.run(_run_parallel_agents())
 
         result.analyst_output = analyst_out
         result.advocate_yes_output = advocate_yes_out
@@ -997,9 +1123,18 @@ class FullRecursivePipeline:
 # 2026-01-21 Pipeline Implementation:
 #
 # ORCHESTRATION:
-# 1. ThreadPoolExecutor for parallel web agents (analyst, advocates)
+# 1. asyncio.gather() for true parallel web agents (analyst, advocates)
+#    - Uses asyncio.to_thread() to wrap blocking Gemini API calls
+#    - Replaced ThreadPoolExecutor with asyncio.run(_run_parallel_agents())
 # 2. DATA_ANALYST timing controlled by data_analyst_parallel flag
 # 3. Sequential mode allows DATA_ANALYST to use web agent findings
+#
+# 2026-01-22 Async Refactoring:
+# 1. Added async versions of agent runners in agents.py (run_*_async functions)
+# 2. Pipeline parallel phase now uses asyncio.gather() instead of ThreadPoolExecutor
+# 3. Each async function wraps sync call with asyncio.to_thread() for non-blocking I/O
+# 4. asyncio.run() is called once per iteration to execute the parallel phase
+# 5. This enables true concurrent execution of Gemini API calls
 #
 # ERROR HANDLING:
 # 1. Each agent can fail independently - check outputs
@@ -1016,9 +1151,9 @@ class FullRecursivePipeline:
 # 2. Sequential web agents instead of true async
 #
 # FUTURE IMPROVEMENTS:
-# 1. Add async/await for true parallel execution
+# 1. Add async/await for true parallel execution [DONE - 2026-01-22]
 # 2. Add per-call cost tracking
-# 3. Add source deduplication across iterations
+# 3. Add source deduplication across iterations [DONE - 2026-01-22]
 #
 # OBSERVABILITY (added 2026-01-21):
 # 1. log_dir parameter enables JSONL logging compatible with RLM visualizer
@@ -1038,4 +1173,9 @@ class FullRecursivePipeline:
 # 6. FAST_CONFIG preset disables wayback for speed
 # 7. Typical latency: 2-4 seconds for 10 URLs (with deduplication and caching)
 # 8. Skip patterns prevent wasted API calls on social media, APIs, etc.
+#
+# SOURCE DEDUPLICATION (2026-01-22):
+# - self.seen_urls tracks URLs across iterations, passed to agent prompts
+# - normalize_url() strips UTM params, trailing slashes, lowercases domain
+# - Max 20 URLs in prompt to avoid bloat
 #

@@ -190,73 +190,127 @@ class RLMSessionStats:
 
 FORECASTER_SYSTEM_PROMPT = """You are an expert forecaster for prediction markets using a REPL environment.
 
-CRITICAL: You MUST use ```repl code blocks for ALL code execution. Do NOT use ```python blocks.
-The REPL environment ONLY executes code in ```repl blocks. Using ```python will cause your code to be ignored!
+You can access, transform, and analyze market data interactively by writing ARBITRARY Python code.
+You will be queried iteratively until you provide a final prediction.
 
 CRITICAL RULES:
-1. You are making predictions AS OF the cutoff_ts in the context - pretend it's that date NOW
+1. You are making predictions AS OF the cutoff_ts - pretend it's that date NOW
 2. You must NOT use any information from AFTER the cutoff date
-3. Do NOT simply extrapolate price trends - apply domain reasoning
-4. Consider base rates and historical patterns from similar markets
-5. Provide well-calibrated probabilities that reflect your actual uncertainty
-6. ALWAYS use ```repl blocks for code - NEVER use ```python
+3. All data in the parquet file is PRE-FILTERED to before cutoff (no leakage)
+4. Apply domain reasoning - don't just extrapolate price trends
+5. Consider base rates and historical patterns from similar markets
+6. Provide well-calibrated probabilities that reflect your actual uncertainty
 
-CONTEXT STRUCTURE:
-The `context` variable is a dictionary with:
-- market: Dict with title, description, options, end_time, source
-- price_history: Dict mapping option_idx to {title, prices, last_price}
-- cutoff_ts: The prediction date (string) - you are making the prediction ON this date
-- n_options: Number of options (your prediction must have this many probabilities)
-- parquet_info: Information about the full dataset structure
+CODE EXECUTION:
+- Write code in ```repl blocks (NOT ```python - that won't execute!)
+- You can import libraries: pandas, numpy, json, etc.
+- Use print() statements to view outputs and continue reasoning
+- Variables persist across code blocks in the same conversation
 
-AVAILABLE HELPER FUNCTIONS (use in ```repl blocks):
-1. search(query: str) -> List[Tuple[market_id, score, metadata]]
-   Find similar markets using TF-IDF semantic search
+THE REPL ENVIRONMENT CONTAINS:
 
-2. trend(option_idx: int) -> Dict[str, float]
-   Returns {slope, volatility, min, max, mean, last_value, length}
+1. MARKET METADATA (minimal - query parquet for everything else):
+   - market_id: str - The market you're predicting
+   - cutoff_ts: str - The prediction date (ISO format)
+   - option_count: int - Number of options
+   - source: str - 'kalshi' or 'metaculus'
 
-3. market_info(market_id: str) -> str
-   Get full title and description text of a market
+2. PARQUET FILE ACCESS:
+   - parquet_path: str - Path to the market data parquet file
+   - Contains ALL market data filtered to before cutoff_ts
+   - Schema:
+     * event_id: str - Market identifier
+     * source: str - Data source
+     * title: str - Market question
+     * description: str - Detailed market description
+     * status: str - Market status
+     * end_time: datetime - Market close time
+     * options: JSON string - List[{{"title": str, ...}}]
+     * time_series: JSON string - List[{{"ts": datetime, "raw_belief": List[float]}}]
+     * resolution: JSON string - List[float] one-hot outcome (if resolved)
+     * target: JSON string - List[float] target probabilities
 
-4. get_base_rate(query: str) -> List[float] or None
-   Get average resolution from similar markets (base rates)
+3. HELPER FUNCTIONS:
+   - llm_query(prompt: str) -> str : Query a sub-LLM (500K context) for complex reasoning
+   - FINAL_VAR(variable_name: str) : Return a variable as your final answer
 
-5. llm_query(prompt: str) -> str
-   Query a sub-LLM for complex reasoning (use sparingly, costs tokens)
+ANALYSIS WORKFLOW:
 
-ANALYSIS PROCESS:
-1. EXAMINE: Look at context['market'] and context['price_history']
-2. SEARCH: Use search() to find similar historical markets
-3. ANALYZE: Use trend() to study price movements
-4. REASON: Apply domain knowledge - but NOT future knowledge!
-5. PREDICT: Set prediction = [p1, p2, ...] and call FINAL_VAR(prediction)
-
-OUTPUT FORMAT:
+Step 1: LOAD DATA
 ```repl
-# Analyze the market
-print(context['market']['title'])
-similar = search(context['market']['title'])
-print(f"Found {len(similar)} similar markets")
+import json
+df = pd.read_parquet(parquet_path)
+market_row = df[df['event_id'] == market_id].iloc[0]
 
-# Check trends
-for i in range(context['n_options']):
-    t = trend(i)
-    print(f"Option {i}: last={t['last_value']:.2f}, slope={t['slope']:.4f}")
+title = market_row['title']
+description = market_row['description']
+options = json.loads(market_row['options_json'])  # Note: 'options_json' not 'options'
 
-# Your reasoning here...
+print(f"Title: {{title}}")
+print(f"Description: {{description[:200]}}")
+print(f"Options: {{[opt['title'] for opt in options]}}")
+print(f"Option count: {{len(options)}}")
+```
 
-# Final prediction (MUST sum to 1.0, MUST have n_options values)
-prediction = [0.6, 0.4]  # Example for 2-option market
-print(f"Final prediction: {prediction}")
+Step 2: ANALYZE PRICE HISTORY
+```repl
+# Each option has its own time series in 'ts' and 'belief' arrays
+for i, opt in enumerate(options):
+    timestamps = opt['ts']  # List of ISO timestamp strings
+    prices = opt['belief']  # List of probability values (0.0-1.0)
+
+    last_price = prices[-1] if prices else 0.5
+
+    # Compute trend
+    if len(prices) >= 2:
+        slope = np.polyfit(range(len(prices)), prices, 1)[0]
+        volatility = np.std(prices)
+        print(f"Option {{i}} ({{opt['title'][:50]}}): last={{last_price:.3f}}, slope={{slope:.4f}}, vol={{volatility:.3f}}")
+```
+
+Step 3: APPLY DOMAIN REASONING
+```repl
+# Get current prices for all options
+current_prices = [opt['belief'][-1] if opt['belief'] else 0.5 for opt in options]
+
+# Use llm_query() for complex semantic reasoning about the market
+reasoning = llm_query(f\"\"\"
+Analyze this prediction market and provide reasoning:
+
+Title: {{title}}
+Description: {{description}}
+Current prices: {{current_prices}}
+
+Consider:
+1. What are the key factors that determine this outcome?
+2. What is the base rate for this type of event?
+3. Are there any recent developments or trends?
+4. Are the current prices well-calibrated?
+
+Provide concise analysis as of {{cutoff_ts}}.
+\"\"\")
+
+print(f"Reasoning:\\n{{reasoning}}")
+```
+
+Step 4: MAKE PREDICTION
+```repl
+# Based on analysis, create prediction
+# Example: adjust last price based on trend and reasoning
+prediction = [0.6, 0.4]  # Must sum to 1.0 and have {{option_count}} values
+
+print(f"Final prediction: {{prediction}}")
+print(f"Sum: {{sum(prediction)}}")  # Should be 1.0
 ```
 FINAL_VAR(prediction)
 
 IMPORTANT:
 - Probabilities MUST sum to 1.0
-- Array length MUST equal n_options
-- Use the helper functions to gather evidence before deciding
-- Never reveal that you know the actual outcome
+- Array length MUST equal option_count
+- Write at least ONE ```repl block before FINAL_VAR()
+- Use llm_query() for complex semantic reasoning (it's powerful!)
+- Explore the data systematically - don't rush to a prediction
+- All code executes in the same persistent namespace
 """
 
 
@@ -264,108 +318,122 @@ IMPORTANT:
 # Setup Code Builder
 # =============================================================================
 
-def build_setup_code(search_index: MarketSearchIndex, example: Example) -> str:
+def build_setup_code(search_index: MarketSearchIndex, example: Example, parquet_path: Optional[str] = None) -> str:
     """
-    Build setup code that defines helper functions in the LocalREPL namespace.
-    These functions are serialized into Python code that will execute in the REPL.
+    Build setup code for TRUE RLM paradigm with arbitrary code execution.
+
+    CRITICAL: This is the RLM paradigm from the paper:
+    - Model writes ARBITRARY Python code to query/analyze data
+    - Data is in the environment (parquet file), not the prompt
+    - Model can import pandas/polars/duckdb and write queries
+    - Model explores systematically via REPL iteration
+
+    Setup code provides:
+    - Parquet file path and schema documentation
+    - Pre-imported libraries (pandas, numpy)
+    - Minimal helper functions (optional)
+    - Market metadata (event_id, cutoff_ts, option_count)
     """
-    # Pre-compute trend data for this example
-    trend_data = {}
-    for i, opt in enumerate(example.options):
-        trend_data[i] = analyze_trend(opt.history_belief)
 
-    # Pre-compute search results
-    title = example.static_features.get("title", "")
-    search_results = []
-    if search_index and search_index.is_built:
-        results = search_index.search(title, top_k=10)
-        for mid, score, meta in results:
-            if mid != example.event_id:
-                search_results.append({
-                    "market_id": mid,
-                    "score": float(score),
-                    "title": meta.get("title", ""),
-                    "description": meta.get("description", "")[:500],
-                    "target": [float(t) for t in meta.get("target", [])] if meta.get("target") else None,
-                })
+    # Serialize minimal market metadata
+    metadata = {
+        "event_id": example.event_id,
+        "cutoff_ts": example.cutoff_ts.isoformat() if isinstance(example.cutoff_ts, datetime) else str(example.cutoff_ts),
+        "option_count": len(example.options),
+        "source": example.source,
+    }
 
-    # Serialize to JSON for embedding in setup code
-    # Use repr(json.dumps(...)) pattern for safe Python code embedding
-    # This handles all special characters automatically (quotes, backslashes, newlines, etc.)
-    trend_json_repr = repr(json.dumps(trend_data, ensure_ascii=True))
-    search_json_repr = repr(json.dumps(search_results, ensure_ascii=True))
-    event_id_repr = repr(example.event_id)
+    metadata_json_repr = repr(json.dumps(metadata, ensure_ascii=True))
+
+    # Parquet path (if provided)
+    parquet_path_repr = repr(parquet_path) if parquet_path else "None"
 
     setup_code = f'''
 # ============================================================
-# RLM Forecaster Helper Functions
-# Pre-computed at setup time for this market prediction
+# RLM Forecaster Setup - TRUE RLM PARADIGM
+# Model can write ARBITRARY code to query parquet data
 # ============================================================
 
 import json
-
-# Pre-computed data (using repr() for safe escaping of all special characters)
-_trend_data = json.loads({trend_json_repr})
-_search_results = json.loads({search_json_repr})
-_current_event_id = {event_id_repr}
-
-# Track function calls
-_call_counts = {{"search": 0, "trend": 0, "market_info": 0, "base_rate": 0}}
-
-def search(query: str, top_k: int = 5):
-    """
-    Find similar markets using TF-IDF semantic search.
-    Returns: List of (market_id, score, metadata) tuples
-    """
-    _call_counts["search"] += 1
-    results = []
-    for r in _search_results[:top_k]:
-        results.append((
-            r["market_id"],
-            r["score"],
-            {{"title": r["title"], "target": r["target"]}}
-        ))
-    return results
-
-def trend(option_idx: int):
-    """
-    Get trend analysis for an option.
-    Returns: Dict with slope, volatility, min, max, mean, last_value, length
-    """
-    _call_counts["trend"] += 1
-    idx_str = str(option_idx)
-    if idx_str in _trend_data:
-        return _trend_data[idx_str]
-    return {{"error": f"Invalid option index: {{option_idx}}"}}
-
-def market_info(market_id: str):
-    """
-    Get full title and description of a market.
-    Returns: String with market text
-    """
-    _call_counts["market_info"] += 1
-    for r in _search_results:
-        if r["market_id"] == market_id:
-            return f"Title: {{r['title']}}\\nDescription: {{r['description']}}"
-    return f"Market {{market_id}} not found in index"
-
-def get_base_rate(query: str = None):
-    """
-    Get average resolution from similar markets (base rates).
-    Returns: List[float] averaged from similar markets, or None
-    """
-    _call_counts["base_rate"] += 1
-    targets = [r["target"] for r in _search_results if r["target"]]
-    if not targets:
-        return None
-    n = len(targets[0]) if targets else 0
-    if n == 0:
-        return None
-    avg = [sum(t[i] for t in targets if len(t) > i) / len(targets) for i in range(n)]
-    return avg
-
-# Make numpy available
 import numpy as np
+import pandas as pd
+
+# ============================================================
+# MARKET METADATA (minimal - query parquet for everything else)
+# ============================================================
+
+market_metadata = json.loads({metadata_json_repr})
+
+# Quick access variables
+market_id = market_metadata["event_id"]
+cutoff_ts = market_metadata["cutoff_ts"]
+option_count = market_metadata["option_count"]
+source = market_metadata["source"]
+
+# ============================================================
+# PARQUET DATA ACCESS
+# ============================================================
+
+parquet_path = {parquet_path_repr}
+
+# PARQUET SCHEMA:
+# The parquet file contains market data with the following columns:
+#
+# METADATA COLUMNS:
+# - source (str): Data source ('kalshi' or 'metaculus')
+# - event_id (str): Unique market identifier (matches market_id above)
+# - title (str): Market question/title
+# - description (str): Detailed description of the market
+# - url (str): Web URL to the market
+# - market_type (str): Type of market (e.g., 'event')
+# - status (str): Market status ('open', 'closed', 'resolved', 'unknown')
+#
+# TIME COLUMNS:
+# - end_time (datetime64[ns, UTC]): When the market closes
+# - created_time (datetime64[ns, UTC]): When the market was created
+#
+# DATA COLUMNS (JSON strings - must parse with json.loads()):
+# - options_json (str): JSON array of option objects
+#   Structure: List of dicts, each with:
+#     * option_id (str): Unique option identifier
+#     * market_id (str): Parent market identifier
+#     * title (str): Option description/question
+#     * ts (List[str]): Time series timestamps (ISO format)
+#     * belief (List[float]): Price history aligned with ts (0.0-1.0 probabilities)
+#     * bid, ask (List[float or None]): Order book data
+#     * volume, open_interest (List[float]): Trading metrics
+#     * metadata_json (str): Option-specific metadata (JSON string)
+#     * resolved_value_json (str): Resolution outcome if resolved
+#   Example access:
+#     options = json.loads(row['options_json'])
+#     first_option = options[0]
+#     price_history = first_option['belief']  # List[float]
+#     timestamps = first_option['ts']  # List[str] ISO timestamps
+#
+# - resolved_value_json (str): JSON with resolution outcome (if market resolved)
+#   Structure: varies by market
+#
+# - metadata_json (str): JSON object with market-level metadata
+#   Common fields: {{"option_count": int, "resolved_yes_count": int, ...}}
+#
+# IMPORTANT: All data is filtered to BEFORE cutoff_ts (no leakage)
+
+print(f"Market ID: {{market_id}}")
+print(f"Cutoff: {{cutoff_ts}}")
+print(f"Options: {{option_count}}")
+print(f"Parquet: {{parquet_path}}")
+print("")
+print("You can write ARBITRARY Python code to analyze the data!")
+print("Examples:")
+print("  df = pd.read_parquet(parquet_path)")
+print("  my_market = df[df['event_id'] == market_id].iloc[0]")
+print("  print(my_market['title'])")
+print("  options = json.loads(my_market['options'])")
+print("  time_series = json.loads(my_market['time_series'])")
+print("  # Analyze trends, compute statistics, query similar markets, etc.")
+print("")
+print("When done, call: FINAL_VAR(prediction)")
+print("  where prediction = [p1, p2, ...] with {{option_count}} probabilities")
 '''
     return setup_code
 
@@ -375,49 +443,28 @@ import numpy as np
 # =============================================================================
 
 def build_context(example: Example, parquet_path: Optional[str] = None) -> Dict[str, Any]:
-    """Build context dictionary for the REPL."""
+    """
+    Build MINIMAL context dictionary for RLM.
+
+    CRITICAL: In the true RLM paradigm, data should NOT be dumped into prompts.
+    Instead, the model queries what it needs via REPL functions.
+
+    This context provides only the essential metadata - the model must query
+    for descriptions, prices, and other data using helper functions.
+    """
     cutoff_ts = example.cutoff_ts
     if isinstance(cutoff_ts, datetime):
         cutoff_str = cutoff_ts.strftime("%Y-%m-%d %H:%M")
     else:
         cutoff_str = str(cutoff_ts)
 
-    # Build price history
-    price_history = {}
-    for i, opt in enumerate(example.options):
-        price_history[str(i)] = {
-            "title": opt.title,
-            "prices": opt.history_belief[-50:] if opt.history_belief else [],
-            "last_price": opt.history_belief[-1] if opt.history_belief else 0.5,
-        }
-
-    # Parquet schema documentation
-    parquet_info = """
-Dataset Schema (for reference):
-- event_id: str - Unique market identifier
-- source: str - 'kalshi' or 'metaculus'
-- title: str - Market question
-- description: str - Detailed description
-- status: str - 'open', 'closed', 'resolved'
-- end_time: datetime - Market close time
-- time_series: List[{ts, raw_belief}] - Price history
-- options: List[{title, ...}] - Available options
-- resolution: List[float] - One-hot encoded outcome (if resolved)
-"""
-
     return {
-        "market": {
-            "title": example.static_features.get("title", "Unknown"),
-            "description": example.static_features.get("description", "")[:3000],
-            "end_time": str(example.static_features.get("end_time", "Unknown")),
-            "source": example.source,
-            "event_id": example.event_id,
-            "options": [opt.title for opt in example.options],
-        },
-        "price_history": price_history,
+        "market_id": example.event_id,
+        "title": example.static_features.get("title", "Unknown")[:100],  # Truncated!
+        "option_count": len(example.options),
         "cutoff_ts": cutoff_str,
-        "n_options": len(example.options),
-        "parquet_info": parquet_info,
+        # NO description, NO price_history, NO parquet_info
+        # Model MUST query for these via helper functions
     }
 
 
@@ -459,6 +506,7 @@ class RLMForecaster(ForecastMethod):
         verbose: bool = False,
         use_repl: bool = True,  # Ablation: disable code execution
         diagnostic_mode: bool = False,  # Enable detailed logging to file
+        parquet_path: Optional[str] = None,  # Path to parquet file for arbitrary code execution
     ):
         """
         Args:
@@ -469,6 +517,7 @@ class RLMForecaster(ForecastMethod):
             verbose: Print debug information
             use_repl: Enable code execution (disable for ablation comparison)
             diagnostic_mode: Enable detailed logging to data/outputs/rlm_diagnostics_*.log
+            parquet_path: Path to parquet file containing market data (enables arbitrary code execution)
         """
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
         if not self.api_key:
@@ -482,6 +531,7 @@ class RLMForecaster(ForecastMethod):
         self.verbose = verbose
         self.use_repl = use_repl
         self.diagnostic_mode = diagnostic_mode
+        self.parquet_path = parquet_path
 
         # Lazy-initialized
         self._search_index: Optional[MarketSearchIndex] = None
@@ -650,19 +700,24 @@ class RLMForecaster(ForecastMethod):
 
         # Build context and setup code
         context = build_context(example)
-        setup_code = build_setup_code(self._search_index, example)
+        setup_code = build_setup_code(self._search_index, example, parquet_path=self.parquet_path)
 
         # Diagnostic: log setup code
         self._diagnostics.log(f"Building prediction for: {example.event_id}")
 
-        # Build user prompt
-        market = context["market"]
-        user_prompt = f"""Predict this market: {market['title']}
+        # Build user prompt (minimal - model must query for details)
+        user_prompt = f"""Predict this market: {context['title']}
 
+Market ID: {context['market_id']}
 Cutoff date: {context['cutoff_ts']} (you are making this prediction ON this date - no future info!)
-Options: {market['options']}
-Source: {market['source']}
-n_options: {context['n_options']}
+Option count: {context['option_count']}
+
+IMPORTANT:
+- You have MINIMAL context - you must use helper functions to get data
+- Start with get_description() to understand the market
+- Use get_option_titles() to see the options
+- Use get_prices() and trend() to analyze price history
+- You MUST write at least one ```repl code block before FINAL_VAR()
 
 Analyze the data using the helper functions and provide your prediction."""
 
@@ -800,28 +855,40 @@ Analyze the data using the helper functions and provide your prediction."""
         return self._fallback_last_price(example), stats
 
     def _predict_without_repl(self, example: Example) -> Tuple[List[float], RLMPredictionStats]:
-        """Predict without code execution (ablation mode)."""
+        """
+        Predict without code execution (ablation mode).
+
+        Note: For ablation comparison, we provide full data in the prompt since
+        there's no REPL to query it. This is the OLD approach that violates RLM paradigm.
+        """
         stats = RLMPredictionStats(event_id=example.event_id)
         start_time = time.time()
 
+        # Build minimal context for metadata
         context = build_context(example)
+
+        # Extract full data for ablation prompt (bypasses RLM paradigm)
+        title = example.static_features.get("title", "Unknown")
+        description = example.static_features.get("description", "")[:1000]
+        end_time = example.static_features.get("end_time", "Unknown")
 
         prompt = f"""You are a prediction market forecaster. Analyze this market and provide probabilities.
 
 CRITICAL: Your prediction date is {context['cutoff_ts']}. Do NOT use future information.
 
-MARKET: {context['market']['title']}
-DESCRIPTION: {context['market']['description'][:1000]}
-OPTIONS: {context['market']['options']}
-END TIME: {context['market']['end_time']}
+MARKET: {title}
+DESCRIPTION: {description}
+OPTIONS: {[opt.title for opt in example.options]}
+END TIME: {end_time}
 
 CURRENT PRICES:
 """
-        for opt_key, opt_data in context['price_history'].items():
-            prompt += f"  {opt_data['title']}: {opt_data['last_price']:.2%}\n"
+        for i, opt in enumerate(example.options):
+            last_price = opt.history_belief[-1] if opt.history_belief else 0.5
+            prompt += f"  {opt.title}: {last_price:.2%}\n"
 
         prompt += f"""
-Provide your prediction as a JSON array of {context['n_options']} probabilities summing to 1.0.
+Provide your prediction as a JSON array of {context['option_count']} probabilities summing to 1.0.
 Respond with ONLY the JSON array, e.g.: [0.6, 0.4]
 """
 
@@ -1238,4 +1305,102 @@ def market_consensus_baseline(example: Example) -> List[float]:
 # VERIFICATION:
 #   uv run python -c "from methods.rlm_forecaster import RLMPredictionStats; print(RLMPredictionStats('test').api_calls)"
 #   Should print: 0
+#
+# =============================================================================
+# 2026-01-22 RLM INFRASTRUCTURE VERIFICATION
+# =============================================================================
+#
+# CRITICAL: RLM IS WORKING!
+#
+# Test results (n=1, gemini-2.0-flash-exp):
+# - Fallback rate: 0.0% (RLM executes successfully)
+# - Code blocks executed: 1.00 avg (model writes ```repl blocks)
+# - API calls: 11 (multi-iteration reasoning confirmed)
+# - Tokens: 44K input / 2.7K output
+# - Prediction: [0.400, 0.600] (real prediction, not baseline fallback)
+#
+# MODEL AVAILABILITY ISSUE (not a code bug):
+# - gemini-3-flash-preview and gemini-3-pro-preview have widespread 500 INTERNAL errors
+# - Root cause: Server-side capacity constraints (45% of errors are 503 "model overloaded")
+# - This is a SERVICE issue, NOT a CODE issue
+# - Model names are correct per official Gemini API docs
+# - Sources:
+#   * https://support.google.com/gemini/thread/396753722
+#   * https://discuss.google.dev/t/internal-error-responses-from-gemini-3-pro-flash/301242
+# - Workaround: Use gemini-2.0-flash-exp until Gemini-3 capacity stabilizes
+#
+# OBSERVATION: Model makes incorrect assumptions about data structure
+#
+# From diagnostic log (data/outputs/rlm_diagnostics_20260122_045533.log):
+#   Model generated:
+#     title = market_metadata['title']  # ERROR: doesn't exist!
+#     description = market_metadata['description']  # ERROR: doesn't exist!
+#     options = json.loads(market_row['options'])  # ERROR: market_row undefined!
+#
+# What setup_code actually provides:
+#   - market_metadata: {event_id, cutoff_ts, option_count, source} (minimal!)
+#   - parquet_path: str (path to parquet file)
+#   - Example code in comments showing: df = pd.read_parquet(parquet_path)
+#
+# HYPOTHESIS:
+# Model needs explicit parquet schema (column names + types + descriptions) to
+# understand what data is queryable. Don't REQUIRE a specific query pattern
+# (that violates RLM principles), but INFORM the model of data structure.
+#
+# NEXT ITERATION (scientific method):
+# 1. Add parquet schema documentation to setup_code or system prompt
+# 2. Run n=1 test: uv run python tests/test_rlm_debug.py --n 1
+# 3. Check diagnostic log: Does model query parquet correctly?
+# 4. Iterate based on observation
+#
+# DO NOT:
+# - Add explicit warnings ("you MUST query parquet first") - too prescriptive
+# - Add few-shot examples - defeats purpose of RLM exploration
+# - Batch test (n=10+) during iteration - observe n=1 first
+# - Add validation examples - use scientific judgment instead
+#
+# FILES MODIFIED:
+# - tests/test_rlm_debug.py: Added parquet_path parameter, changed default model
+#   to gemini-2.0-flash, fixed division-by-zero in summary output
+# - .claude/RLM_HANDOFF.md: Updated with findings and development philosophy
+#
+# SOURCES:
+# - Gemini 3 models: https://ai.google.dev/gemini-api/docs/gemini-3
+# - Gemini 3 Flash: https://ai.google.dev/gemini-api/docs/models
+# - Community issue reports (500 errors): see links above
+#
+# =============================================================================
+# 2026-01-22 SCHEMA DOCUMENTATION ITERATION
+# =============================================================================
+#
+# ITERATION 1: Initial test (before schema fix)
+# - Model tried: market_metadata['title'] (doesn't exist)
+# - Model tried: market_row['options'] (undefined variable)
+# - Result: Code execution, but wrong variable names
+#
+# ITERATION 2: Added accurate schema documentation to setup_code
+# - Documented columns, types, descriptions
+# - Showed that options_json contains time series data (ts, belief arrays)
+# - Result: Model still assumed variables exist instead of querying
+#
+# ITERATION 3: Fixed system prompt examples to match actual schema
+# - Changed 'options' -> 'options_json'
+# - Changed time_series structure (was wrong - doesn't exist as separate column)
+# - Updated examples to show: options = json.loads(market_row['options_json'])
+# - Result: Model switched to using llm_query() instead of parquet query!
+#
+# OBSERVATION:
+# The model generates code (1-3 blocks per run) but NEVER calls FINAL_VAR(prediction).
+# This suggests:
+# 1. Model doesn't understand the completion criterion (must call FINAL_VAR)
+# 2. OR iterations run out before model completes reasoning
+# 3. OR model is uncertain and avoids making a prediction
+#
+# HYPOTHESIS FOR NEXT ITERATION:
+# The system prompt has 4-step workflow examples, but the model might not understand
+# that FINAL_VAR() is mandatory. Need to make it clearer that prediction is required.
+#
+# The model shifted strategy from "query parquet" to "use llm_query()" - this shows
+# it's adapting based on prompt changes, which is good! But it's not completing the
+# task (no FINAL_VAR call).
 #

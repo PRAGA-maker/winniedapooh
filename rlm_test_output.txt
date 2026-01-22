@@ -1,0 +1,38 @@
+============================================================
+TESTING REPL SANDBOX
+============================================================
+Basic math: stdout='x = 5', stderr=''
+Numpy test: stdout='2.0', stderr=''
+Blocked eval: stderr contains error (expected)
+Variable persistence: counter = 1
+Context injection: Test Market
+
+All REPL sandbox tests passed!
+
+Using dataset: data\datasets\v20260122_0418_test_parallel_nofilter_unified
+Traceback (most recent call last):
+  File "C:\Users\prapa\Documents\GitHub\winniedapooh\.venv\Lib\site-packages\pandas\core\indexes\base.py", line 3812, in get_loc
+    return self._engine.get_loc(casted_key)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "pandas/_libs/index.pyx", line 167, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/index.pyx", line 196, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7088, in pandas._libs.hashtable.PyObjectHashTable.get_item
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7096, in pandas._libs.hashtable.PyObjectHashTable.get_item
+KeyError: 'source'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\prapa\Documents\GitHub\winniedapooh\tests\test_rlm_debug.py", line 264, in <module>
+    debug_rlm(n=args.n, verbose=args.verbose, model=args.model)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prapa\Documents\GitHub\winniedapooh\tests\test_rlm_debug.py", line 128, in debug_rlm
+    kalshi_view = dataset.slice(source='kalshi')
+  File "C:\Users\prapa\Documents\GitHub\winniedapooh\forecasting\dataset.py", line 56, in slice
+    filtered_df = filtered_df[filtered_df["source"] == source]
+                              ~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\prapa\Documents\GitHub\winniedapooh\.venv\Lib\site-packages\pandas\core\frame.py", line 4113, in __getitem__
+    indexer = self.columns.get_loc(key)
+  File "C:\Users\prapa\Documents\GitHub\winniedapooh\.venv\Lib\site-packages\pandas\core\indexes\base.py", line 3819, in get_loc
+    raise KeyError(key) from err
+KeyError: 'source'

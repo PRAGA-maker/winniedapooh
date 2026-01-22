@@ -367,6 +367,9 @@ DATA_ANALYST_SYSTEM_PROMPT = """You are a Data Analyst with access to historical
 
 Your job: Analyze historical price patterns, trends, and similar markets to provide QUANTITATIVE evidence for predictions.
 
+CRITICAL: You MUST use ```repl code blocks for ALL code execution. Do NOT use ```python blocks.
+The REPL environment ONLY executes code in ```repl blocks. Using ```python will cause your code to be ignored!
+
 CRITICAL DATE RESTRICTION:
 You are analyzing data AS OF a specific cutoff date.
 Do NOT reference or use any knowledge of events after the cutoff.

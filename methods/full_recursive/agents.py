@@ -15,7 +15,7 @@ import re
 import time
 from datetime import datetime
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .prompts import (
     PLANNER_SYSTEM_PROMPT,
@@ -25,6 +25,46 @@ from .prompts import (
     VERIFIER_SYSTEM_PROMPT,
     SYNTHESIZER_SYSTEM_PROMPT,
 )
+
+
+# =============================================================================
+# Model Pricing Configuration (per 1M tokens)
+# =============================================================================
+
+# Pricing as of Jan 2026 - source: https://ai.google.dev/gemini-api/docs/pricing
+GEMINI_PRICING = {
+    # Gemini 2.0 models
+    "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
+    "gemini-2.0-flash-lite": {"input": 0.075, "output": 0.30},
+    "gemini-2.0-flash-exp": {"input": 0.10, "output": 0.40},
+    # Gemini 2.5 models
+    "gemini-2.5-pro": {"input": 1.25, "output": 10.00},
+    "gemini-2.5-pro-preview": {"input": 1.25, "output": 10.00},
+    "gemini-2.5-flash": {"input": 0.15, "output": 0.60},
+    "gemini-2.5-flash-lite": {"input": 0.10, "output": 0.40},
+    # Gemini 1.5 models (legacy)
+    "gemini-1.5-pro": {"input": 1.25, "output": 5.00},
+    "gemini-1.5-flash": {"input": 0.075, "output": 0.30},
+}
+
+DEFAULT_PRICING = {"input": 0.10, "output": 0.40}
+
+
+def estimate_tokens_from_text(text: str) -> int:
+    """Estimate token count from text (~4 chars/token for English)."""
+    if not text:
+        return 0
+    return max(1, len(text) // 4)
+
+
+def get_model_pricing(model: str) -> Dict[str, float]:
+    """Get pricing for a model, with fallback to default."""
+    base_model = model.lower()
+    for suffix in ["-001", "-002", "-latest", "-preview"]:
+        if base_model.endswith(suffix) and base_model[:-len(suffix)] in GEMINI_PRICING:
+            base_model = base_model[:-len(suffix)]
+            break
+    return GEMINI_PRICING.get(base_model, DEFAULT_PRICING)
 
 
 # =============================================================================
@@ -168,7 +208,7 @@ class SynthesizerOutput:
 
 @dataclass
 class LLMCallLog:
-    """Log of an LLM API call."""
+    """Log of an LLM API call with accurate token cost tracking."""
     call_id: str
     agent: str
     timestamp: str
@@ -176,9 +216,12 @@ class LLMCallLog:
     latency_ms: int
     tokens_input: int = 0
     tokens_output: int = 0
-    cost_estimate_usd: float = 0.0
+    cost_estimate_usd: float = 0.0  # Calculated cost using model-specific pricing
     raw_response: str = ""
     parse_error: Optional[str] = None
+    # Token tracking metadata
+    token_source: str = "api"  # "api" if from usage_metadata, "estimated" if fallback
+    model: str = ""  # Model used for pricing calculation
 
 
 # =============================================================================
@@ -194,13 +237,10 @@ class GeminiAgentClient:
 
     Features:
     - Automatic retry with exponential backoff
-    - Cost tracking per call and session
+    - Accurate cost tracking using model-specific pricing
+    - Fallback token estimation when API doesn't return usage_metadata
     - Support for Google Search grounding
     """
-
-    # Cost estimates per 1M tokens (rough estimates)
-    COST_PER_1M_INPUT = 0.075  # Gemini 2.0 Flash
-    COST_PER_1M_OUTPUT = 0.30
 
     # Retry configuration
     MAX_RETRIES = 3
@@ -234,9 +274,15 @@ class GeminiAgentClient:
         self._client = None
         self.total_calls = 0
         self.total_retries = 0
-        self.total_tokens_input = 0
-        self.total_tokens_output = 0
+        # Token tracking - actual from API
+        self.total_tokens_input_actual = 0
+        self.total_tokens_output_actual = 0
+        # Token tracking - estimated (fallback)
+        self.total_tokens_input_estimated = 0
+        self.total_tokens_output_estimated = 0
         self.total_cost_usd = 0.0
+        self.calls_with_actual_tokens = 0
+        self.calls_with_estimated_tokens = 0
 
     def _get_client(self):
         """Lazy-load Gemini client."""
@@ -323,18 +369,36 @@ class GeminiAgentClient:
                 # Try to get token counts from usage metadata
                 tokens_input = 0
                 tokens_output = 0
+                token_source = "api"
+
                 if hasattr(response, 'usage_metadata') and response.usage_metadata:
                     tokens_input = getattr(response.usage_metadata, 'prompt_token_count', 0) or 0
                     tokens_output = getattr(response.usage_metadata, 'candidates_token_count', 0) or 0
 
-                # Update totals
-                self.total_calls += 1
-                self.total_tokens_input += tokens_input
-                self.total_tokens_output += tokens_output
+                # Fallback to estimation if API didn't return token counts
+                if tokens_input == 0 or tokens_output == 0:
+                    token_source = "estimated"
+                    full_prompt = system_instruction + "\n" + prompt
+                    if tokens_input == 0:
+                        tokens_input = estimate_tokens_from_text(full_prompt)
+                    if tokens_output == 0:
+                        tokens_output = estimate_tokens_from_text(text)
 
-                # Estimate cost
-                cost = (tokens_input / 1_000_000 * self.COST_PER_1M_INPUT +
-                        tokens_output / 1_000_000 * self.COST_PER_1M_OUTPUT)
+                # Update totals based on source
+                self.total_calls += 1
+                if token_source == "api":
+                    self.total_tokens_input_actual += tokens_input
+                    self.total_tokens_output_actual += tokens_output
+                    self.calls_with_actual_tokens += 1
+                else:
+                    self.total_tokens_input_estimated += tokens_input
+                    self.total_tokens_output_estimated += tokens_output
+                    self.calls_with_estimated_tokens += 1
+
+                # Calculate cost using model-specific pricing
+                pricing = get_model_pricing(self.model)
+                cost = (tokens_input / 1_000_000 * pricing["input"] +
+                        tokens_output / 1_000_000 * pricing["output"])
                 self.total_cost_usd += cost
 
                 metadata = {
@@ -342,13 +406,16 @@ class GeminiAgentClient:
                     "tokens_input": tokens_input,
                     "tokens_output": tokens_output,
                     "cost_estimate_usd": cost,
+                    "token_source": token_source,
+                    "model": self.model,
                     "retries": attempt,
                 }
 
                 if self.verbose:
                     retry_info = f" (retry {attempt})" if attempt > 0 else ""
+                    source_indicator = "" if token_source == "api" else " [est]"
                     print(f"[Gemini] Call {self.total_calls}{retry_info}: {latency_ms}ms, "
-                          f"{tokens_input}+{tokens_output} tokens, ${cost:.4f}")
+                          f"{tokens_input}+{tokens_output} tokens{source_indicator}, ${cost:.4f}")
 
                 return text, metadata
 
@@ -370,14 +437,25 @@ class GeminiAgentClient:
         raise RuntimeError(f"Gemini API call failed after {self.max_retries + 1} attempts: {last_error}")
 
     def get_stats(self) -> Dict[str, Any]:
-        """Get client usage statistics."""
+        """Get client usage statistics with actual vs estimated token breakdown."""
+        total_tokens_input = self.total_tokens_input_actual + self.total_tokens_input_estimated
+        total_tokens_output = self.total_tokens_output_actual + self.total_tokens_output_estimated
+
         return {
             "total_calls": self.total_calls,
             "total_retries": self.total_retries,
-            "total_tokens_input": self.total_tokens_input,
-            "total_tokens_output": self.total_tokens_output,
+            "total_tokens_input": total_tokens_input,
+            "total_tokens_output": total_tokens_output,
             "total_cost_usd": self.total_cost_usd,
             "retry_rate": self.total_retries / max(1, self.total_calls),
+            # Detailed token tracking
+            "tokens_input_actual": self.total_tokens_input_actual,
+            "tokens_input_estimated": self.total_tokens_input_estimated,
+            "tokens_output_actual": self.total_tokens_output_actual,
+            "tokens_output_estimated": self.total_tokens_output_estimated,
+            "calls_with_actual_tokens": self.calls_with_actual_tokens,
+            "calls_with_estimated_tokens": self.calls_with_estimated_tokens,
+            "model": self.model,
         }
 
 
@@ -413,6 +491,153 @@ def safe_get(d: Dict, *keys, default=None):
         if isinstance(d, dict) and key in d:
             return d[key]
     return default
+
+
+def _log_parse_failure(
+    response_text: str,
+    agent_type: str,
+    error: Optional[Exception] = None,
+    verbose: bool = False,
+) -> None:
+    """
+    Log detailed information about a parse failure.
+
+    Args:
+        response_text: The raw response that failed to parse
+        agent_type: The type of agent (e.g., "PLANNER", "ANALYST")
+        error: The exception that occurred (if any)
+        verbose: If True, write full response to debug file
+    """
+    # Truncate for display (avoid flooding console)
+    snippet_len = 500
+    snippet = response_text[:snippet_len]
+    if len(response_text) > snippet_len:
+        snippet += f"... [{len(response_text) - snippet_len} more chars]"
+
+    print(f"[{agent_type}] Parse error: {error if error else 'Failed to extract valid JSON'}")
+    print(f"[{agent_type}] Response snippet:")
+    print(snippet)
+
+    # Optionally write full response to debug file
+    if verbose:
+        import tempfile
+        import os
+        debug_dir = tempfile.gettempdir()
+        debug_path = os.path.join(debug_dir, f"debug_{agent_type.lower()}_{int(time.time())}.txt")
+        try:
+            with open(debug_path, "w", encoding="utf-8") as f:
+                f.write(f"Agent: {agent_type}" + chr(10))
+                f.write(f"Timestamp: {datetime.now().isoformat()}" + chr(10))
+                f.write(f"Error: {error}" + chr(10))
+                f.write(f"Response length: {len(response_text)}" + chr(10))
+                f.write("-" * 50 + chr(10))
+                # Limit file size to 50KB to avoid disk issues
+                max_size = 50_000
+                f.write(response_text[:max_size])
+                if len(response_text) > max_size:
+                    f.write(chr(10) + f"... [truncated {len(response_text) - max_size} chars]")
+            print(f"[{agent_type}] Full response saved to {debug_path}")
+        except Exception as write_err:
+            print(f"[{agent_type}] Failed to write debug file: {write_err}")
+
+
+def _parse_json_with_logging(
+    response_text: str,
+    agent_type: str,
+    verbose: bool = False,
+) -> Optional[Dict[str, Any]]:
+    """
+    Parse JSON from response text with detailed error logging.
+
+    Args:
+        response_text: The raw response text
+        agent_type: The type of agent for logging
+        verbose: If True, write full response to debug file on failure
+
+    Returns:
+        Parsed JSON dict or None on failure
+    """
+    try:
+        result = extract_json(response_text)
+        if result is None:
+            _log_parse_failure(response_text, agent_type, None, verbose)
+        return result
+    except Exception as e:
+        _log_parse_failure(response_text, agent_type, e, verbose)
+        return None
+
+
+def _run_with_parse_retry(
+    generate_fn,
+    parse_fn,
+    agent_type: str,
+    max_parse_retries: int = 2,
+    verbose: bool = False,
+) -> Tuple[str, Optional[Any], Dict[str, Any]]:
+    """
+    Run an agent call with retry on parse failures.
+
+    This wrapper retries the API call if the response fails to parse,
+    up to max_parse_retries times. API errors (rate limits, etc.) are
+    handled separately by the GeminiAgentClient.
+
+    Args:
+        generate_fn: Callable that returns (response_text, metadata)
+        parse_fn: Callable that takes response_text and returns parsed output or None
+        agent_type: Agent name for logging (e.g., "PLANNER")
+        max_parse_retries: Max retries for parse failures (default 2)
+        verbose: Enable verbose logging
+
+    Returns:
+        Tuple of (final_response_text, parsed_output_or_none, aggregated_metadata)
+    """
+    all_metadata = []
+    last_response = ""
+
+    for attempt in range(max_parse_retries + 1):
+        response, metadata = generate_fn()
+        last_response = response
+        all_metadata.append(metadata)
+
+        output = parse_fn(response)
+        if output is not None:
+            # Success - aggregate metadata
+            agg_metadata = _aggregate_metadata(all_metadata, attempt)
+            return response, output, agg_metadata
+
+        # Parse failed
+        if attempt < max_parse_retries:
+            print(f"[{agent_type}] Parse failed (attempt {attempt + 1}/{max_parse_retries + 1}), retrying...")
+            _log_parse_failure(response, agent_type, None, verbose)
+            time.sleep(1 * (attempt + 1))  # Simple backoff
+        else:
+            # Final attempt failed
+            _log_parse_failure(response, agent_type, None, verbose)
+
+    # All retries exhausted
+    agg_metadata = _aggregate_metadata(all_metadata, max_parse_retries)
+    return last_response, None, agg_metadata
+
+
+def _aggregate_metadata(metadata_list: List[Dict[str, Any]], parse_retries: int) -> Dict[str, Any]:
+    """Aggregate metadata from multiple attempts."""
+    if not metadata_list:
+        return {"latency_ms": 0, "tokens_input": 0, "tokens_output": 0, "cost_estimate_usd": 0.0, "parse_retries": 0}
+
+    total_latency = sum(m.get("latency_ms", 0) for m in metadata_list)
+    total_input = sum(m.get("tokens_input", 0) for m in metadata_list)
+    total_output = sum(m.get("tokens_output", 0) for m in metadata_list)
+    total_cost = sum(m.get("cost_estimate_usd", m.get("cost_usd", 0.0)) for m in metadata_list)
+
+    return {
+        "latency_ms": total_latency,
+        "tokens_input": total_input,
+        "tokens_output": total_output,
+        "cost_estimate_usd": total_cost,
+        "cost_usd": total_cost,
+        "parse_retries": parse_retries,
+        "api_retries": sum(m.get("retries", 0) for m in metadata_list),
+    }
 
 
 # =============================================================================
@@ -520,21 +745,30 @@ def run_planner(
     query_budget: int = 5,
     previous_feedback: Optional[str] = None,
     iteration: int = 1,
+    max_parse_retries: int = 2,
+    verbose: bool = False,
 ) -> Tuple[Optional[PlannerOutput], LLMCallLog]:
-    """Run the planner agent."""
+    """Run the planner agent with automatic retry on parse failures."""
     prompt = build_planner_prompt(
         market_title, market_description, time_range, research_cutoff,
         notable_moves, query_budget, previous_feedback
     )
 
-    response, metadata = client.generate(
-        prompt,
-        PLANNER_SYSTEM_PROMPT,
-        enable_grounding=True,
-        temperature=0.7,
-    )
+    def generate_fn():
+        return client.generate(
+            prompt,
+            PLANNER_SYSTEM_PROMPT,
+            enable_grounding=True,
+            temperature=0.7,
+        )
 
-    output = parse_planner_response(response)
+    response, output, metadata = _run_with_parse_retry(
+        generate_fn,
+        parse_planner_response,
+        "PLANNER",
+        max_parse_retries=max_parse_retries,
+        verbose=verbose,
+    )
 
     log = LLMCallLog(
         call_id=f"iter{iteration}_planner",
@@ -544,9 +778,9 @@ def run_planner(
         latency_ms=metadata["latency_ms"],
         tokens_input=metadata["tokens_input"],
         tokens_output=metadata["tokens_output"],
-        cost_estimate_usd=metadata["cost_estimate_usd"],
+        cost_estimate_usd=metadata.get("cost_estimate_usd", metadata.get("cost_usd", 0.0)),
         raw_response=response[:2000],
-        parse_error=None if output else "Failed to parse planner response",
+        parse_error=None if output else f"Failed to parse planner response after {max_parse_retries + 1} attempts",
     )
 
     return output, log
@@ -557,6 +791,7 @@ def build_analyst_prompt(
     sub_questions: List[SubQuestion],
     time_range: Tuple[str, str],
     research_cutoff: str,
+    seen_urls: Optional[Set[str]] = None,
 ) -> str:
     """Build the prompt for the analyst agent."""
     start, end = time_range
@@ -577,6 +812,18 @@ SUB-QUESTIONS TO RESEARCH:
         prompt += f"   Priority: {q.priority}\n"
         if q.target_date:
             prompt += f"   Target date: {q.target_date}\n"
+        prompt += "\n"
+
+    # Add previously cited sources to avoid re-citing them
+    if seen_urls and len(seen_urls) > 0:
+        prompt += """
+ALREADY CITED SOURCES (do NOT re-cite these - find NEW sources instead):
+"""
+        # Limit to 20 URLs to avoid prompt bloat
+        for url in list(seen_urls)[:20]:
+            prompt += f"- {url}\n"
+        if len(seen_urls) > 20:
+            prompt += f"... and {len(seen_urls) - 20} more\n"
         prompt += "\n"
 
     prompt += """
@@ -645,18 +892,28 @@ def run_analyst(
     time_range: Tuple[str, str],
     research_cutoff: str,
     iteration: int = 1,
+    seen_urls: Optional[Set[str]] = None,
+    max_parse_retries: int = 2,
+    verbose: bool = False,
 ) -> Tuple[Optional[AnalystOutput], LLMCallLog]:
-    """Run the analyst agent."""
-    prompt = build_analyst_prompt(market_title, sub_questions, time_range, research_cutoff)
+    """Run the analyst agent with automatic retry on parse failures."""
+    prompt = build_analyst_prompt(market_title, sub_questions, time_range, research_cutoff, seen_urls)
 
-    response, metadata = client.generate(
-        prompt,
-        ANALYST_SYSTEM_PROMPT,
-        enable_grounding=True,
-        temperature=0.5,
+    def generate_fn():
+        return client.generate(
+            prompt,
+            ANALYST_SYSTEM_PROMPT,
+            enable_grounding=True,
+            temperature=0.5,
+        )
+
+    response, output, metadata = _run_with_parse_retry(
+        generate_fn,
+        parse_analyst_response,
+        "ANALYST",
+        max_parse_retries=max_parse_retries,
+        verbose=verbose,
     )
-
-    output = parse_analyst_response(response)
 
     log = LLMCallLog(
         call_id=f"iter{iteration}_analyst",
@@ -666,9 +923,9 @@ def run_analyst(
         latency_ms=metadata["latency_ms"],
         tokens_input=metadata["tokens_input"],
         tokens_output=metadata["tokens_output"],
-        cost_estimate_usd=metadata["cost_estimate_usd"],
+        cost_estimate_usd=metadata.get("cost_estimate_usd", metadata.get("cost_usd", 0.0)),
         raw_response=response[:2000],
-        parse_error=None if output else "Failed to parse analyst response",
+        parse_error=None if output else f"Failed to parse analyst response after {max_parse_retries + 1} attempts",
     )
 
     return output, log
@@ -680,6 +937,7 @@ def build_advocate_prompt(
     position: str,
     time_range: Tuple[str, str],
     research_cutoff: str,
+    seen_urls: Optional[Set[str]] = None,
 ) -> str:
     """Build the prompt for an advocate agent."""
     start, end = time_range
@@ -697,6 +955,17 @@ CONTEXT - Key questions identified by the Planner:
 
     for i, q in enumerate(sub_questions):
         prompt += f"{i+1}. [{q.priority}] {q.question}\n"
+
+    # Add previously cited sources to avoid re-citing them
+    if seen_urls and len(seen_urls) > 0:
+        prompt += """
+ALREADY CITED SOURCES (do NOT re-cite these - find NEW sources instead):
+"""
+        # Limit to 20 URLs to avoid prompt bloat
+        for url in list(seen_urls)[:20]:
+            prompt += f"- {url}\n"
+        if len(seen_urls) > 20:
+            prompt += f"... and {len(seen_urls) - 20} more\n"
 
     prompt += f"""
 YOUR TASK:
@@ -781,21 +1050,30 @@ def run_advocate(
     time_range: Tuple[str, str],
     research_cutoff: str,
     iteration: int = 1,
+    seen_urls: Optional[Set[str]] = None,
+    max_parse_retries: int = 2,
+    verbose: bool = False,
 ) -> Tuple[Optional[AdvocateOutput], LLMCallLog]:
-    """Run an advocate agent (YES or NO)."""
-    prompt = build_advocate_prompt(market_title, sub_questions, position, time_range, research_cutoff)
-
+    """Run an advocate agent (YES or NO) with automatic retry on parse failures."""
+    prompt = build_advocate_prompt(market_title, sub_questions, position, time_range, research_cutoff, seen_urls)
     system_prompt = ADVOCATE_YES_SYSTEM_PROMPT if position == "YES" else ADVOCATE_NO_SYSTEM_PROMPT
-
-    response, metadata = client.generate(
-        prompt,
-        system_prompt,
-        enable_grounding=True,
-        temperature=0.7,
-    )
-
-    output = parse_advocate_response(response, position)
     agent_type = f"advocate_{position.lower()}"
+
+    def generate_fn():
+        return client.generate(
+            prompt,
+            system_prompt,
+            enable_grounding=True,
+            temperature=0.7,
+        )
+
+    response, output, metadata = _run_with_parse_retry(
+        generate_fn,
+        lambda text: parse_advocate_response(text, position),
+        agent_type.upper(),
+        max_parse_retries=max_parse_retries,
+        verbose=verbose,
+    )
 
     log = LLMCallLog(
         call_id=f"iter{iteration}_{agent_type}",
@@ -805,9 +1083,9 @@ def run_advocate(
         latency_ms=metadata["latency_ms"],
         tokens_input=metadata["tokens_input"],
         tokens_output=metadata["tokens_output"],
-        cost_estimate_usd=metadata["cost_estimate_usd"],
+        cost_estimate_usd=metadata.get("cost_estimate_usd", metadata.get("cost_usd", 0.0)),
         raw_response=response[:2000],
-        parse_error=None if output else f"Failed to parse {agent_type} response",
+        parse_error=None if output else f"Failed to parse {agent_type} response after {max_parse_retries + 1} attempts",
     )
 
     return output, log
@@ -943,22 +1221,31 @@ def run_verifier(
     advocate_no_output: Optional[AdvocateOutput],
     iteration: int = 1,
     wayback_context: str = "",
+    max_parse_retries: int = 2,
+    verbose: bool = False,
 ) -> Tuple[Optional[VerifierOutput], LLMCallLog]:
-    """Run the verifier agent."""
+    """Run the verifier agent with automatic retry on parse failures."""
     prompt = build_verifier_prompt(
         market_title, time_range, research_cutoff,
         analyst_output, advocate_yes_output, advocate_no_output,
         wayback_context=wayback_context,
     )
 
-    response, metadata = client.generate(
-        prompt,
-        VERIFIER_SYSTEM_PROMPT,
-        enable_grounding=True,
-        temperature=0.5,
-    )
+    def generate_fn():
+        return client.generate(
+            prompt,
+            VERIFIER_SYSTEM_PROMPT,
+            enable_grounding=True,
+            temperature=0.5,
+        )
 
-    output = parse_verifier_response(response)
+    response, output, metadata = _run_with_parse_retry(
+        generate_fn,
+        parse_verifier_response,
+        "VERIFIER",
+        max_parse_retries=max_parse_retries,
+        verbose=verbose,
+    )
 
     log = LLMCallLog(
         call_id=f"iter{iteration}_verifier",
@@ -968,9 +1255,9 @@ def run_verifier(
         latency_ms=metadata["latency_ms"],
         tokens_input=metadata["tokens_input"],
         tokens_output=metadata["tokens_output"],
-        cost_estimate_usd=metadata["cost_estimate_usd"],
+        cost_estimate_usd=metadata.get("cost_estimate_usd", metadata.get("cost_usd", 0.0)),
         raw_response=response[:2000],
-        parse_error=None if output else "Failed to parse verifier response",
+        parse_error=None if output else f"Failed to parse verifier response after {max_parse_retries + 1} attempts",
     )
 
     return output, log
@@ -1094,22 +1381,31 @@ def run_synthesizer(
     iteration: int,
     max_iterations: int,
     confidence_threshold: float,
+    max_parse_retries: int = 2,
+    verbose: bool = False,
 ) -> Tuple[Optional[SynthesizerOutput], LLMCallLog]:
-    """Run the synthesizer agent."""
+    """Run the synthesizer agent with automatic retry on parse failures."""
     prompt = build_synthesizer_prompt(
         market_title, time_range, research_cutoff,
         analyst_output, verifier_output,
         iteration, max_iterations, confidence_threshold
     )
 
-    response, metadata = client.generate(
-        prompt,
-        SYNTHESIZER_SYSTEM_PROMPT,
-        enable_grounding=True,
-        temperature=0.5,
-    )
+    def generate_fn():
+        return client.generate(
+            prompt,
+            SYNTHESIZER_SYSTEM_PROMPT,
+            enable_grounding=True,
+            temperature=0.5,
+        )
 
-    output = parse_synthesizer_response(response)
+    response, output, metadata = _run_with_parse_retry(
+        generate_fn,
+        parse_synthesizer_response,
+        "SYNTHESIZER",
+        max_parse_retries=max_parse_retries,
+        verbose=verbose,
+    )
 
     log = LLMCallLog(
         call_id=f"iter{iteration}_synthesizer",
@@ -1119,12 +1415,52 @@ def run_synthesizer(
         latency_ms=metadata["latency_ms"],
         tokens_input=metadata["tokens_input"],
         tokens_output=metadata["tokens_output"],
-        cost_estimate_usd=metadata["cost_estimate_usd"],
+        cost_estimate_usd=metadata.get("cost_estimate_usd", metadata.get("cost_usd", 0.0)),
         raw_response=response[:2000],
-        parse_error=None if output else "Failed to parse synthesizer response",
+        parse_error=None if output else f"Failed to parse synthesizer response after {max_parse_retries + 1} attempts",
     )
 
     return output, log
+
+
+# =============================================================================
+# Async Agent Runners (for true parallel execution)
+# =============================================================================
+
+import asyncio
+
+
+async def run_analyst_async(
+    client: GeminiAgentClient,
+    market_title: str,
+    sub_questions: List[SubQuestion],
+    time_range: Tuple[str, str],
+    research_cutoff: str,
+    iteration: int = 1,
+    seen_urls: Optional[Set[str]] = None,
+) -> Tuple[Optional[AnalystOutput], LLMCallLog]:
+    """Async version of run_analyst using asyncio.to_thread()."""
+    return await asyncio.to_thread(
+        run_analyst,
+        client, market_title, sub_questions, time_range, research_cutoff, iteration, seen_urls
+    )
+
+
+async def run_advocate_async(
+    client: GeminiAgentClient,
+    market_title: str,
+    sub_questions: List[SubQuestion],
+    position: str,
+    time_range: Tuple[str, str],
+    research_cutoff: str,
+    iteration: int = 1,
+    seen_urls: Optional[Set[str]] = None,
+) -> Tuple[Optional[AdvocateOutput], LLMCallLog]:
+    """Async version of run_advocate using asyncio.to_thread()."""
+    return await asyncio.to_thread(
+        run_advocate,
+        client, market_title, sub_questions, position, time_range, research_cutoff, iteration, seen_urls
+    )
 
 
 # =============================================================================
@@ -1151,4 +1487,68 @@ def run_synthesizer(
 # 1. All parse functions return Optional - caller handles None
 # 2. LLMCallLog captures raw response for debugging
 # 3. parse_error field tracks parsing failures
+#
+# 2026-01-22 Token Cost Tracking Enhancement:
+#
+# ACCURATE PRICING:
+# 1. Added GEMINI_PRICING dict with model-specific costs (per 1M tokens)
+# 2. Pricing source: https://ai.google.dev/gemini-api/docs/pricing
+# 3. DEFAULT_PRICING fallback for unknown models uses gemini-2.0-flash rates
+#
+# TOKEN TRACKING:
+# 1. Primary: use usage_metadata from API response when available
+# 2. Fallback: estimate_tokens_from_text() uses ~4 chars/token heuristic
+# 3. LLMCallLog.token_source field tracks whether "api" or "estimated"
+# 4. GeminiAgentClient tracks actual vs estimated tokens separately
+#
+# COST CALCULATION:
+# 1. get_model_pricing() handles model name normalization (-001, -latest, etc)
+# 2. Cost formula: (input_tokens / 1M * input_price) + (output_tokens / 1M * output_price)
+# 3. get_stats() returns both aggregated totals and actual/estimated breakdown
+#
+# COMPATIBILITY:
+# 1. Kept cost_estimate_usd field name for backward compatibility
+# 2. metadata dict includes both cost_estimate_usd and token_source
+#
+# 2026-01-22 Better Error Messages and Retry Logic:
+#
+# PARSE ERROR LOGGING (_log_parse_failure):
+# 1. Shows first 500 chars of response as snippet
+# 2. When verbose=True, writes full response to temp file (max 50KB)
+# 3. Debug files in temp dir: debug_{agent_type}_{timestamp}.txt
+#
+# RETRY ON PARSE FAILURES (_run_with_parse_retry):
+# 1. Wraps generate_fn and parse_fn with automatic retry
+# 2. max_parse_retries=2 by default (3 total attempts)
+# 3. Simple backoff: 1s, 2s, 3s between retries
+# 4. Aggregates metadata (latency, tokens, cost) across all attempts
+# 5. Does NOT retry API errors (rate limits handled by GeminiAgentClient)
+#
+# RUNNER FUNCTION CHANGES:
+# 1. All run_* functions now accept max_parse_retries and verbose params
+# 2. Error messages include attempt count on failure
+# 3. Metadata includes parse_retries count for debugging
+#
+# 2026-01-22 Async Agent Runners:
+#
+# IMPLEMENTATION:
+# 1. Added async versions of all agent runners (run_*_async functions)
+# 2. Each async function uses asyncio.to_thread() to wrap blocking Gemini calls
+# 3. This enables true parallel execution when used with asyncio.gather()
+# 4. Sync versions kept for backward compatibility
+#
+# USAGE:
+# 1. Pipeline uses asyncio.run(_run_parallel_agents()) for parallel phase
+# 2. Analyst + Advocate YES + Advocate NO run concurrently
+# 3. seen_urls param enables URL deduplication at prompt level
+#
+# PERFORMANCE:
+# 1. True async enables overlapping API wait times
+# 2. 3 parallel agents reduce latency vs sequential execution
+# 3. GIL not a bottleneck since calls are I/O-bound (network)
+#
+# 2026-01-22 Source Deduplication:
+# - seen_urls param on build_*_prompt() adds "ALREADY CITED SOURCES" section
+# - Capped at 20 URLs to avoid prompt bloat
+# - Async variants pass seen_urls through to sync functions
 #
