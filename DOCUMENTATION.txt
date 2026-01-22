@@ -118,6 +118,15 @@ D. Forecasting Methods (`methods/`)
   - Requires `GEMINI_API_KEY` in `.env`
   - Params: `model` (default "gemini-2.0-flash"), `max_recursions` (default 3), `call_budget` (default 100)
   - Tools: SEARCH (TF-IDF over market titles), TREND (time series analysis), BASE_RATE (historical resolution rates)
+- `FullRecursiveForecaster`: Advanced ensemble combining web-grounded agents with RLM REPL data analysis.
+  - Requires `GEMINI_API_KEY` in `.env`
+  - Params: `model` (default "gemini-2.0-flash"), `max_iterations` (default 5), `confidence_threshold` (default 0.7), `data_analyst_parallel` (default true)
+  - Architecture: PLANNER -> ANALYST + ADVOCATE_YES + ADVOCATE_NO + DATA_ANALYST -> VERIFIER -> SYNTHESIZER
+  - The pipeline runs recursively until confidence >= threshold or max_iterations reached
+  - DATA_ANALYST uses RLM REPL for quantitative analysis on price history data
+  - Ablation flag `data_analyst_parallel`: true = faster (parallel with web agents), false = sequential (can use web findings)
+  - Usage: `uv run runner/runner.py --method full_recursive`
+  - With ablation: `uv run runner/runner.py --method full_recursive --method-params '{"data_analyst_parallel": false}'`
 - `registry.py`: Central factory for instantiating methods.
 
 E. Experiment Workflow (`runner/`)
@@ -165,7 +174,8 @@ All outputs are stored in `data/outputs/` (ignored by git). See `runner/results_
 │   ├── kalshi/         # Kalshi-specific API grabbers and mapping
 │   └── metaculus/      # Metaculus-specific API grabbers and mapping
 ├── methods/            # Implementations of forecasting algorithms
-│   └── rlm_tools/      # RLM helper tools (TF-IDF search, trend analysis)
+│   ├── rlm_tools/      # RLM helper tools (TF-IDF search, trend analysis)
+│   └── full_recursive/ # Full recursive ensemble agents (ported from kalshi-research-agents)
 ├── runner/             # Experiment orchestration and evaluation
 ├── scripts/            # Data ingestion and inspection tools
 ├── docs/               # Platform-specific documentation/metadata
