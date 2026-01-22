@@ -1,18 +1,25 @@
 """
-RLM (Recursive Language Model) Forecaster for prediction markets.
+RLM NO-MARKET ABLATION: Forecaster without current market price data.
 
-This implementation uses the external/rlm library for the true RLM paradigm:
-- The model writes Python code in ```repl blocks
-- Code executes in LocalREPL from external/rlm
-- llm_query() available for sub-LLM reasoning
-- Helper functions (search, trend, market_info) pre-injected via setup_code
+This is an ablation experiment to test if RLM can make good predictions
+WITHOUT access to crowd wisdom (current market prices).
+
+Hypothesis: Can RLM find informative reference classes and reason about outcomes
+without copying the consensus?
+
+Differences from standard RLM:
+- Current market's time series data is HIDDEN (no belief/price history)
+- Model can still see: title, description, options, end_time
+- Model can search OTHER markets for similar historical examples
+- Forces reasoning from first principles + historical reference classes
+- Tests if model can beat crowd without seeing crowd's answer
 
 Key features:
 - Python code execution sandbox via LocalREPL
-- Pre-injected helper functions for market analysis
-- TF-IDF semantic search over market descriptions
-- Full parquet schema documentation in context
-- Leakage detection and ablation support
+- TF-IDF semantic search over OTHER markets (not current one)
+- Full parquet schema BUT no current market time series
+- llm_query() for domain reasoning
+- Leakage detection
 """
 import os
 import sys
@@ -340,6 +347,11 @@ class RLMSessionStats:
 
 FORECASTER_SYSTEM_PROMPT = """You are an expert forecaster for prediction markets using a REPL environment.
 
+⚠️ ABLATION MODE: NO CURRENT MARKET PRICES ⚠️
+You do NOT have access to the current market's price/belief time series!
+The current market's options have EMPTY ts[] and belief[] arrays.
+You MUST use search to find similar historical markets and reason from first principles.
+
 You can access, transform, and analyze market data interactively by writing ARBITRARY Python code.
 You will be queried iteratively until you provide a final prediction.
 
@@ -358,9 +370,10 @@ CRITICAL RULES:
 1. You are making predictions AS OF the cutoff_ts - pretend it's that date NOW
 2. You must NOT use any information from AFTER the cutoff date
 3. All data in the parquet file is PRE-FILTERED to before cutoff (no leakage)
-4. Apply domain reasoning - don't just extrapolate price trends
-5. Consider base rates and historical patterns from similar markets
-6. Provide well-calibrated probabilities that reflect your actual uncertainty
+4. The CURRENT market has NO PRICE DATA - you must reason without crowd wisdom
+5. Search OTHER markets in df to find similar historical examples
+6. Apply domain reasoning and consider base rates
+7. Provide well-calibrated probabilities that reflect your actual uncertainty
 
 CODE EXECUTION:
 - Write code in ```repl blocks (NOT ```python - that won't execute!)
@@ -508,8 +521,40 @@ parquet_path = {parquet_path_repr}
 
 if parquet_path and parquet_path != "None":
     df = pd.read_parquet(parquet_path)
-    # Filter to current market for convenience
-    market_row = df[df['event_id'] == market_id].iloc[0] if len(df[df['event_id'] == market_id]) > 0 else None
+
+    # ============================================================
+    # ABLATION: Remove current market's time series data
+    # ============================================================
+    # We keep title, description, options structure
+    # BUT we strip out belief/price history from current market
+    # This forces model to reason without crowd wisdom
+
+    if len(df[df['event_id'] == market_id]) > 0:
+        # Get current market row
+        current_idx = df[df['event_id'] == market_id].index[0]
+        market_row = df.loc[current_idx].copy()
+
+        # Parse options_json
+        try:
+            options = json.loads(market_row['options_json'])
+            # Strip out time series data (belief, ts, bid, ask, volume, etc.)
+            for opt in options:
+                opt['ts'] = []  # Remove timestamps
+                opt['belief'] = []  # Remove price history - THIS IS THE KEY!
+                opt['bid'] = []
+                opt['ask'] = []
+                opt['volume'] = []
+                opt['open_interest'] = []
+            # Re-serialize
+            market_row['options_json'] = json.dumps(options)
+            # Update dataframe with stripped version
+            df.loc[current_idx, 'options_json'] = market_row['options_json']
+        except:
+            pass  # If parsing fails, keep original
+
+        market_row = df.loc[current_idx]
+    else:
+        market_row = None
 else:
     df = pd.DataFrame()
     market_row = None
@@ -600,22 +645,26 @@ def build_context(example: Example, parquet_path: Optional[str] = None) -> Dict[
 # Main RLM Forecaster
 # =============================================================================
 
-class RLMForecaster(ForecastMethod):
+class RLMNoMarketForecaster(ForecastMethod):
     """
-    RLM-based forecaster using the external/rlm library.
+    RLM NO-MARKET ABLATION: Forecaster without current market prices.
 
-    This is the true RLM paradigm: the model writes Python code that
-    executes in LocalREPL with access to helper functions and llm_query().
+    This ablation removes the current market's time series data (prices) to test
+    if the model can make good predictions without crowd wisdom.
 
-    Features:
-    - Uses external/rlm RLM class for orchestration
-    - LocalREPL with setup_code for helper functions
-    - TF-IDF semantic search over market descriptions
-    - Budget-tracked API calls
-    - Leakage detection
-    - Ablation support (use_repl=False for direct prompting)
+    What the model DOES have:
+    - Market title, description, options, end_time
+    - Access to OTHER markets via search (historical reference classes)
+    - llm_query() for domain reasoning
+    - Full parquet access (but current market has no price history)
+
+    What the model DOES NOT have:
+    - Current market's belief/price time series
+    - Crowd consensus (must reason from scratch)
+
+    Hypothesis: Can RLM beat baseline by finding informative reference classes?
     """
-    name = "rlm"
+    name = "rlm-no-market"
 
     # Supported models
     MODELS = {
@@ -1744,4 +1793,89 @@ def market_consensus_baseline(example: Example) -> List[float]:
 #   uv run python -c "from methods.rlm_forecaster import RLMForecaster; print('OK')"
 #   uv run python tests/test_rlm_debug.py --n 1  # Single test
 #   uv run python tests/test_rlm_debug.py --n 3  # Validation
+#
+# =============================================================================
+# 2026-01-22 RLM NO-MARKET ABLATION - TESTING REASONING VS CROWD CONSENSUS
+# =============================================================================
+#
+# PURPOSE:
+# Test if RLM can make good predictions WITHOUT access to current market prices.
+# This ablation removes crowd wisdom to see if model can reason from scratch.
+#
+# HYPOTHESIS:
+# Can RLM beat baseline by finding informative historical reference classes
+# and applying domain knowledge, without copying the consensus?
+#
+# WHAT THIS ABLATION CHANGES:
+# 1. Current market's options_json is MODIFIED in build_setup_code()
+# 2. For each option in the current market:
+#    - ts[] array is emptied (no timestamps)
+#    - belief[] array is emptied (NO PRICE HISTORY - this is the key!)
+#    - bid[], ask[], volume[], open_interest[] also emptied
+# 3. Everything else preserved: title, description, options structure, end_time
+# 4. Model can still search OTHER markets in df (historical reference classes)
+#
+# SYSTEM PROMPT CHANGES:
+# - Added warning: "⚠️ ABLATION MODE: NO CURRENT MARKET PRICES ⚠️"
+# - Explicit: "You MUST use search to find similar historical markets"
+# - Removed advice to "extrapolate price trends" (no prices to extrapolate!)
+# - Emphasized reasoning from first principles
+#
+# EXPECTED BEHAVIOR:
+# - Model should use df.query() or search to find similar markets
+# - Model should analyze those markets' outcomes
+# - Model should apply domain reasoning (not just copy crowd)
+# - Predictions should be WORSE than baseline (no information advantage)
+# - BUT if predictions are BETTER, that's evidence of genuine reasoning!
+#
+# INTERPRETATION:
+# - If rlm-no-market ≈ random: Model was entirely dependent on crowd prices
+# - If rlm-no-market ≈ rlm: Model was already ignoring crowd prices (searches work!)
+# - If rlm-no-market < rlm < baseline: Model adds value but crowd wisdom helps
+# - If rlm-no-market > baseline: Model has REAL EDGE (unlikely but exciting!)
+#
+# USAGE:
+#   uv run runner/runner.py --method rlm-no-market --n 10
+#   uv run python tests/test_rlm_debug.py --n 3  # (would need to modify to use rlm-no-market)
+#
+# COMPARISON COMMAND:
+#   # Run both methods on same data
+#   uv run runner/runner.py --method rlm --name with_market --n 50
+#   uv run runner/runner.py --method rlm-no-market --name no_market --n 50
+#   # Compare results in data/outputs/
+#
+# FILES MODIFIED:
+# - methods/rlm_no_market.py: This file (copy of rlm_forecaster.py with changes)
+# - methods/registry.py: Added "rlm-no-market" -> RLMNoMarketForecaster
+# - DOCUMENTATION.txt: Added entry explaining the ablation
+#
+# KEY IMPLEMENTATION DETAILS:
+# - Line ~516-540: Data stripping logic in build_setup_code()
+# - Line ~348: System prompt modified with ablation warning
+# - Class name: RLMForecaster -> RLMNoMarketForecaster
+# - Method name: "rlm" -> "rlm-no-market"
+#
+# SCIENTIFIC VALUE:
+# This ablation helps us understand:
+# 1. How much value does RLM add beyond crowd consensus?
+# 2. Can the model find useful reference classes via search?
+# 3. Is the model genuinely reasoning or just copying market prices?
+# 4. How important is pre-existing crowd wisdom for accuracy?
+#
+# EXPECTED RESULTS:
+# - Fallback rate: Should still be 0% (infrastructure works)
+# - Brier score: Likely WORSE than baseline (no information advantage)
+# - Iterations: Might be HIGHER (more exploration needed without prices)
+# - Search usage: Should be HIGHER (model needs to find reference markets)
+#
+# IF RESULTS ARE SURPRISING:
+# - If model beats baseline: We have genuine reasoning! Investigate further.
+# - If model ≈ baseline: Model found good proxies via search (interesting!)
+# - If model << baseline: Expected - crowd wisdom is valuable
+#
+# FUTURE EXTENSIONS:
+# - Test on markets with domain knowledge (where LLM might have edge)
+# - Try providing base rates explicitly (since model can't learn from prices)
+# - Add "similar markets" pre-computed in setup_code (reduce search burden)
+# - Test with llm_query() for deeper domain reasoning
 #

@@ -164,4 +164,10 @@ class ResolveEventTask(Task):
 # 1. Resolution: Allow multi-YES; distribute weight across resolved options.
 # 2. Cutoff: Use the shortest option history to avoid misaligned slices.
 # 3. Relaxed Mode: Normalize last beliefs to keep targets on the simplex.
+# 4. min_history_points Filtering (2026-01-22): Default value of 5 ensures sufficient historical
+#    context for meaningful forecasting. This threshold is critical for data quality but requires
+#    datasets built over adequate time windows. S3 bulk data provides daily snapshots, so a
+#    5-point minimum requires at least 5 days of data. Short-window datasets (e.g., 2 days)
+#    result in 0% example generation rate. For production, build datasets over 30+ days to ensure
+#    high pass rates. Lowering min_history_points improves coverage but reduces forecast quality.
 
