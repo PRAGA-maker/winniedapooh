@@ -45,7 +45,7 @@ except ImportError:
 
 # Type hints that work with or without torch
 if TORCH_AVAILABLE:
-    TensorType = TensorType
+    TensorType = torch.Tensor
 else:
     TensorType = Any
 

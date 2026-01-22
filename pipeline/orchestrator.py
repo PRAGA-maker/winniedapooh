@@ -978,77 +978,7 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
                 }
             store.save_batch("kalshi", s3_metadata_batch, {})
 
-            # STEP D: Full API Enrichment (100% coverage)
-            # Enrich EVERY market via API to get correct title and description.
-            # This is slower but ensures data quality - no incorrect propagation.
-            needs_enrichment = list(store.get_market_ids_needing_enrichment("kalshi"))
-
-            # STEP D.1: Pre-enrichment filter by history count (2026-01-22)
-            # Skip markets with <5 history points - they won't be usable by default tasks anyway.
-            # This is especially important for long builds (month/year) where many markets
-            # have only 1-2 EOD snapshots despite appearing in S3 files.
-            if needs_enrichment:
-                logger.info(f"Pre-filtering {len(needs_enrichment):,} markets by history count...")
-
-                with store._get_conn() as conn:
-                    # Build query with placeholders for all market_ids
-                    placeholders = ','.join('?' for _ in needs_enrichment)
-
-                    usable_query = f"""
-                        SELECT m.market_id
-                        FROM markets m
-                        JOIN (
-                            SELECT market_id, COUNT(ts) as pts
-                            FROM history
-                            WHERE source = 'kalshi'
-                            GROUP BY market_id
-                        ) h ON m.market_id = h.market_id
-                        WHERE m.market_id IN ({placeholders})
-                          AND h.pts >= 5
-                    """
-
-                    usable_rows = conn.execute(usable_query, needs_enrichment).fetchall()
-
-                before_count = len(needs_enrichment)
-                needs_enrichment = [row[0] for row in usable_rows]
-                after_count = len(needs_enrichment)
-
-                skipped = before_count - after_count
-                if skipped > 0:
-                    logger.info(
-                        f"History filter: {before_count:,} -> {after_count:,} markets "
-                        f"({after_count/before_count*100:.1f}% have >=5 pts, {skipped:,} skipped)"
-                    )
-
-            if limit:
-                needs_enrichment = needs_enrichment[:limit]
-
-            logger.info(f"Full enrichment: {len(needs_enrichment):,} markets need API enrichment")
-
-            api_metadata_batch = {}
-            if needs_enrichment:
-                new_markets = kalshi_grabber.fetch_markets(tickers=needs_enrichment)
-                found_tickers = set()
-                for m in new_markets:
-                    try:
-                        record = map_kalshi_market(m)
-                        api_metadata_batch[m["ticker"]] = record
-                        found_tickers.add(m["ticker"])
-                    except Exception:
-                        continue
-
-                if api_metadata_batch:
-                    store.save_batch("kalshi", api_metadata_batch, {})
-                    logger.info(f"Enriched {len(api_metadata_batch):,} markets via API")
-
-                missing_from_api = [t for t in needs_enrichment if t not in found_tickers]
-                if missing_from_api:
-                    store.update_market_urls("kalshi", {t: "" for t in missing_from_api})
-                    logger.info(f"Marked {len(missing_from_api)} markets with empty URLs (API missing).")
-            else:
-                logger.info("No markets need API enrichment.")
-        
-        # STEP F: History Ingestion
+        # STEP D: History Ingestion (moved before API enrichment so we can filter by history count)
         current_date = start_date
         dates_to_process = []
         while current_date <= end_date:
@@ -1073,6 +1003,82 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
                     store.mark_date_processed("kalshi", target_date)
                     processed_days += 1
                     logger.info(f"  [{processed_days}/{len(dates_to_process)}] Finished Kalshi Day {target_date}: {records_count} records.")
+
+        # STEP E: Full API Enrichment with History Filter (moved after history ingestion)
+        # Now that history data exists, we can filter markets by history count before enriching.
+        # This avoids wasting API calls on markets with <5 history points (unusable by default tasks).
+        needs_enrichment = list(store.get_market_ids_needing_enrichment("kalshi"))
+
+        if needs_enrichment:
+            logger.info(f"Filtering {len(needs_enrichment):,} markets by history count before API enrichment...")
+
+            with store._get_conn() as conn:
+                # Use temp table approach to avoid SQLITE_MAX_VARIABLE_NUMBER limit (~999)
+                conn.execute("DROP TABLE IF EXISTS temp_needs_enrichment")
+                conn.execute("CREATE TEMP TABLE temp_needs_enrichment (market_id TEXT PRIMARY KEY)")
+
+                # Insert in batches
+                batch_size = 10000
+                for i in range(0, len(needs_enrichment), batch_size):
+                    batch = needs_enrichment[i:i + batch_size]
+                    conn.executemany("INSERT INTO temp_needs_enrichment VALUES (?)", [(m,) for m in batch])
+
+                # Query using JOIN instead of IN clause
+                usable_query = """
+                    SELECT m.market_id
+                    FROM temp_needs_enrichment t
+                    JOIN markets m ON t.market_id = m.market_id
+                    JOIN (
+                        SELECT market_id, COUNT(ts) as pts
+                        FROM history
+                        WHERE source = 'kalshi'
+                        GROUP BY market_id
+                    ) h ON m.market_id = h.market_id
+                    WHERE h.pts >= 5
+                """
+
+                usable_rows = conn.execute(usable_query).fetchall()
+                conn.execute("DROP TABLE temp_needs_enrichment")
+
+            before_count = len(needs_enrichment)
+            needs_enrichment = [row[0] for row in usable_rows]
+            after_count = len(needs_enrichment)
+
+            skipped = before_count - after_count
+            if skipped > 0:
+                logger.info(
+                    f"History filter: {before_count:,} -> {after_count:,} markets "
+                    f"({after_count/before_count*100:.1f}% have >=5 pts, {skipped:,} skipped)"
+                )
+
+        if limit and needs_enrichment:
+            needs_enrichment = needs_enrichment[:limit]
+
+        logger.info(f"API enrichment: {len(needs_enrichment):,} markets need enrichment")
+
+        if needs_enrichment:
+            api_metadata_batch = {}
+            new_markets = kalshi_grabber.fetch_markets(tickers=needs_enrichment)
+            found_tickers = set()
+            for m in new_markets:
+                try:
+                    record = map_kalshi_market(m)
+                    api_metadata_batch[m["ticker"]] = record
+                    found_tickers.add(m["ticker"])
+                except Exception:
+                    continue
+
+            if api_metadata_batch:
+                store.save_batch("kalshi", api_metadata_batch, {})
+                logger.info(f"Enriched {len(api_metadata_batch):,} markets via API")
+
+            missing_from_api = [t for t in needs_enrichment if t not in found_tickers]
+            if missing_from_api:
+                store.update_market_urls("kalshi", {t: "" for t in missing_from_api})
+                logger.info(f"Marked {len(missing_from_api)} markets with empty URLs (API missing).")
+        else:
+            logger.info("No markets need API enrichment.")
+
     elif not skip_kalshi:
         # Fallback to old behavior if no dates provided (unlikely given user query)
         logger.warning("No dates provided, skipping Kalshi history collection.")
@@ -1641,16 +1647,17 @@ if __name__ == "__main__":
 #     Note: The "100k sticker" confusion likely refers to total market IDs in the S3 bucket (all
 #     tickers ever created), but filtering for active markets (those with volume/open interest)
 #     and date windows dramatically reduces the usable set. This is EXPECTED and CORRECT behavior.
-# 51. PRE-ENRICHMENT HISTORY FILTER (2026-01-22): Added second-stage filtering AFTER S3 scan but
-#     BEFORE API enrichment. Filter skips markets with <5 history points since they're unusable by
-#     default tasks anyway (min_history_points=5). This is critical for long builds (month/year)
+# 51. PRE-ENRICHMENT HISTORY FILTER (2026-01-22): Added second-stage filtering AFTER history
+#     ingestion but BEFORE API enrichment. Filter skips markets with <5 history points since they're
+#     unusable by default tasks anyway (min_history_points=5). Critical for long builds (month/year)
 #     where S3 filter (bulk_grabber.py:371) pulls markets with ANY activity, but many only have
 #     1-2 EOD snapshots in the date window. Combined with S3 filter fix (Lesson #19 in bulk_grabber),
 #     achieves 95-98% reduction in API calls while maintaining 100% data quality.
-#     Implementation: After getting needs_enrichment list, query history table to count points per
-#     market, keep only those with >=5 pts. Logs before/after counts for transparency.
-#     Example results (3-day Dec 2024 test): 9,609 active markets → 85% have 3-4 pts → would filter
-#     to ~1,400 markets with >=5 pts (85% additional reduction after S3 filter).
+#     Implementation: Uses temp table approach to avoid SQLite's ~999 variable limit. After history
+#     ingestion completes, query history table to count points per market, keep only those with >=5.
+#     CRITICAL FIX: Originally placed filter BEFORE history ingestion, causing crash on large builds
+#     (history table empty when filter runs). Moved to run AFTER STEP D (history ingestion) and
+#     BEFORE STEP E (API enrichment) to ensure history data exists before filtering.
 #     BEHAVIOR: NO CHANGE to usable data - only skips markets that would be filtered out by tasks
 #     anyway. Month build expected impact: 100-500k (after S3 filter) → 50-100k (after history filter).
 #     Combined with S3 fix: 11.8M → 50-100k markets (99.5%+ reduction), 80+ hours → 1-2 hours.

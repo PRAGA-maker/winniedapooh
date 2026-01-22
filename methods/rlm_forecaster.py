@@ -344,15 +344,31 @@ You can access, transform, and analyze market data interactively by writing ARBI
 You will be queried iteratively until you provide a final prediction.
 
 TASK COMPLETION (CRITICAL):
-- You MUST call FINAL_VAR("prediction") when you're ready to make your final forecast
-- This is how you signal task completion - without it, your work won't be recorded
-- IMPORTANT: Pass the VARIABLE NAME as a string, not the value itself
-- Example:
+When you're ready to make your final forecast, you MUST follow this TWO-STEP pattern in your response:
+
+STEP 1: Create the prediction variable in a ```repl code block
+STEP 2: Call FINAL_VAR("prediction") IMMEDIATELY after (OUTSIDE the code block, as plain text)
+
+Example of CORRECT completion:
   ```repl
-  prediction = [0.6, 0.4]
+  # After all your analysis, create the prediction array
+  prediction = [0.6, 0.4]  # Must sum to 1.0 and have option_count elements
+  print(f"Final forecast: {prediction}")
   ```
-  FINAL_VAR("prediction")  # Correct - pass variable name as string
-- This is MANDATORY - the task is not complete until you call FINAL_VAR()
+  FINAL_VAR("prediction")
+
+CRITICAL REQUIREMENTS:
+- BOTH steps must happen in the SAME response turn
+- The prediction variable must be created with EXECUTABLE code (not comments!)
+- Pass the VARIABLE NAME to FINAL_VAR as a string, not the value itself
+- Do NOT create prediction in one iteration and call FINAL_VAR in a later iteration
+- This is MANDATORY - without calling FINAL_VAR(), your work won't be recorded
+
+COMMON MISTAKES TO AVOID:
+- ❌ Calling FINAL_VAR("prediction") without creating the variable first
+- ❌ Creating prediction in one turn, then calling FINAL_VAR in a later turn
+- ❌ Writing only comments in the code block instead of executable code
+- ❌ Passing the value to FINAL_VAR: FINAL_VAR([0.6, 0.4]) is WRONG
 
 CRITICAL RULES:
 1. You are making predictions AS OF the cutoff_ts - pretend it's that date NOW
@@ -629,7 +645,7 @@ class RLMForecaster(ForecastMethod):
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model: str = "gemini-3-pro",
+        model: str = "gemini-2.5-flash",  # Changed from gemini-3-pro (has 500 errors)
         max_iterations: int = 10,
         call_budget: int = 1000,
         verbose: bool = False,
@@ -1744,4 +1760,170 @@ def market_consensus_baseline(example: Example) -> List[float]:
 #   uv run python -c "from methods.rlm_forecaster import RLMForecaster; print('OK')"
 #   uv run python tests/test_rlm_debug.py --n 1  # Single test
 #   uv run python tests/test_rlm_debug.py --n 3  # Validation
+#
+# =============================================================================
+# 2026-01-22 PREDICTION EXTRACTION FIX - TWO-STEP PATTERN ENFORCEMENT
+# =============================================================================
+#
+# PROBLEM: High fallback rate (~50%+) despite FINAL_VAR being called
+# - Diagnostic logs showed: `FINAL_VAR called: True` but `'prediction' variable exists: False`
+# - Model was calling FINAL_VAR("prediction") without the variable existing in REPL environment
+#
+# ROOT CAUSE INVESTIGATION:
+#
+# 1. Examined diagnostic logs (data/outputs/rlm_diagnostics_20260122_164246.log):
+#    - OSCARACTO-24-BK: Created `prediction=[0.2, 0.8]` in iteration 9
+#                       But iteration 11 (FINAL_VAR call) had code_blocks_executed=0
+#                       The code block was comment-only, didn't recreate variable
+#    - CREDEF-24-Q3-2: `[FINAL_VAR CALLED] Final answer: Error: Variable 'prediction' not found...`
+#                      This is the exact error from external/rlm/rlm/environments/local_repl.py:172
+#
+# 2. Analyzed external/rlm library (external/rlm/rlm/environments/local_repl.py):
+#    - Line 163: `self.globals["FINAL_VAR"] = self._final_var`
+#    - Line 167-172: `_final_var()` looks up variable_name in `self.locals`
+#    - If not found, returns: f"Error: Variable '{variable_name}' not found"
+#
+# 3. Analyzed external/rlm parsing (external/rlm/rlm/utils/parsing.py):
+#    - Line 48-58: `find_final_answer()` detects FINAL_VAR pattern in response text
+#    - Executes: `environment.execute_code(f"print(FINAL_VAR({variable_name!r}))")`
+#    - This returns string representation of the variable (e.g., "[0.2, 0.8]")
+#    - Our `_extract_prediction()` searches for this array pattern
+#
+# THE REAL ISSUE:
+# The model was NOT consistently following the required pattern:
+#   1. Create `prediction = [...]` in a ```repl code block
+#   2. Call `FINAL_VAR("prediction")` outside code block in SAME response
+#
+# Instead, models were:
+#   - Creating prediction in one iteration, calling FINAL_VAR in a later iteration
+#   - Writing comment-only code blocks that didn't create the variable
+#   - Not creating the variable at all before calling FINAL_VAR
+#
+# The previous prompt example (lines 350-354) was ambiguous:
+#   ```repl
+#   prediction = [0.6, 0.4]
+#   ```
+#   FINAL_VAR("prediction")  # Correct - pass variable name as string
+#
+# This didn't make it clear that BOTH steps must happen in the SAME response turn.
+#
+# THE FIX:
+#
+# Updated FORECASTER_SYSTEM_PROMPT (lines 346-374) to make the pattern EXPLICIT:
+#
+# BEFORE (ambiguous):
+# - Example showed two steps but didn't emphasize they must be together
+# - No warning about creating variable in one turn and calling FINAL_VAR later
+# - No examples of common mistakes
+#
+# AFTER (explicit):
+# - Clear TWO-STEP pattern with numbered steps:
+#     STEP 1: Create the prediction variable in a ```repl code block
+#     STEP 2: Call FINAL_VAR("prediction") IMMEDIATELY after (OUTSIDE the code block)
+# - CRITICAL REQUIREMENTS section emphasizing:
+#     * BOTH steps must happen in the SAME response turn
+#     * Prediction variable must be created with EXECUTABLE code (not comments!)
+#     * Do NOT create prediction in one iteration and call FINAL_VAR in another
+# - COMMON MISTAKES TO AVOID section with specific examples:
+#     * Calling FINAL_VAR without creating variable first
+#     * Creating prediction in one turn, calling FINAL_VAR in later turn
+#     * Writing only comments instead of executable code
+#     * Passing value to FINAL_VAR instead of variable name
+#
+# VALIDATION RESULTS (temp_validate_fix.py, n=3):
+#
+# BEFORE FIX:
+# - Fallback rate: ~50%+
+# - Many predictions showed `'prediction' variable exists: False`
+# - Brier scores dominated by fallback baseline, not actual RLM reasoning
+#
+# AFTER FIX:
+# - Fallback rate: 0% (3/3 predictions extracted successfully)
+# - Diagnostic logs for all 3 examples showed:
+#     ✓ 'prediction' variable exists: True
+#     ✓ FINAL_VAR called: True
+#     ✓ Prediction extracted: True
+#     ✓ Fallback used: False
+# - All predictions now reflect actual RLM reasoning
+#
+# FILES MODIFIED:
+# - methods/rlm_forecaster.py: FORECASTER_SYSTEM_PROMPT (lines 346-374)
+# - methods/rlm_no_market.py: FORECASTER_SYSTEM_PROMPT (lines 358-386)
+# - .claude/RLM_HANDOFF.md: Documented root cause, fix, and validation
+#
+# NEXT STEPS:
+# - Re-run ablation experiment (rlm vs rlm-no-market vs baseline) with n=10-30
+# - Results should now reflect actual RLM performance (not fallback)
+# - Can properly interpret whether model has genuine forecasting edge
+#
+# KEY LESSONS:
+# 1. LLM prompts must be EXTREMELY explicit about multi-step patterns
+# 2. What seems obvious to humans (do X then Y in same turn) isn't to models
+# 3. Adding "COMMON MISTAKES" sections helps models avoid known failure modes
+# 4. Always validate prompt changes with diagnostic logging before large runs
+# 5. Variables in REPL environments don't persist across iterations in the way you might expect
+#    - Each iteration can modify shared state, but models may not understand this
+#    - Safest pattern: complete the task in a single response when possible
+#
+
+# =============================================================================
+# 2026-01-22 PROMPT FIX UPDATE - PARTIAL SUCCESS (40-50% vs 0%)
+# =============================================================================
+#
+# VALIDATION RESULTS:
+# - Initial test (temp_validate_fix.py, n=3): 100% success (0% fallback)
+# - Ablation run (rlm_diagnostics_20260122_172346.log): ~40-50% success
+#
+# SUCCESS EXAMPLES (from ablation):
+# - SCOURT-22: prediction=[0.1, 0.25, 0.35, 0.2, 0.1], extracted successfully
+# - EMMYCSERIES-23: prediction=[0.52, 0.14, ...], extracted successfully
+#
+# FAILURE EXAMPLES (from ablation):
+# - EMMYDACTR-23-SS: 'prediction' variable exists: False, used fallback
+# - OSCARPIC-24-B: 'prediction' variable exists: False, used fallback (multiple times)
+#
+# ROOT CAUSE:
+# Gemini 2.5 Flash has INCONSISTENT instruction-following for multi-step patterns.
+# Even with explicit TWO-STEP instructions and COMMON MISTAKES section, the model:
+# - Sometimes executes analysis code but forgets to create prediction variable
+# - Sometimes creates other variables but not one named 'prediction'
+# - Sometimes calls FINAL_VAR without the variable existing
+#
+# WHY PROMPT-ONLY FIX IS INSUFFICIENT:
+# 1. LLMs don't have 100% instruction-following rate for complex workflows
+# 2. What works in validation (n=3) doesn't always generalize to diverse examples
+# 3. The external/rlm library expects a very specific pattern (variable THEN FINAL_VAR)
+# 4. Models interpret 'create a variable' differently than we expect
+#
+# ALTERNATIVE SOLUTIONS TO EXPLORE:
+#
+# 1. CODE-LEVEL FIX (most robust):
+#    Modify _extract_prediction() to:
+#    a) Parse prediction arrays directly from response text (not just FINAL_VAR output)
+#    b) Check for alternative variable names (final_prediction, probs, probabilities)
+#    c) Add retry logic: if prediction missing, ask model to fix it
+#
+# 2. MODEL CHANGE:
+#    - Try Claude (Opus/Sonnet) - better instruction-following
+#    - Try Gemini 2.0 Pro (bigger model, more reliable)
+#    - Cost/latency trade-off vs reliability
+#
+# 3. SIMPLIFY INTERFACE:
+#    Modify external/rlm library to accept FINAL_VAR([0.6, 0.4]) directly
+#    (Pass value directly, not variable name)
+#
+# 4. STRUCTURED OUTPUT:
+#    Use Gemini's JSON mode to force specific response format
+#    (May conflict with RLM's REPL paradigm)
+#
+# CURRENT IMPACT:
+# - Fallback rate improved from ~50%+ to ~40-50% (modest improvement)
+# - Still not good enough for valid ablation comparison
+# - Results will show RLM performance but mixed with fallback baseline
+#
+# RECOMMENDATION FOR NEXT AGENT:
+# 1. Let current ablation complete and check actual metrics
+# 2. Implement code-level fix (option 1a above) - most practical
+# 3. If still not sufficient, try Claude model (option 2)
+# 4. Document actual fallback rate in results
 #

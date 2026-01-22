@@ -356,15 +356,31 @@ You can access, transform, and analyze market data interactively by writing ARBI
 You will be queried iteratively until you provide a final prediction.
 
 TASK COMPLETION (CRITICAL):
-- You MUST call FINAL_VAR("prediction") when you're ready to make your final forecast
-- This is how you signal task completion - without it, your work won't be recorded
-- IMPORTANT: Pass the VARIABLE NAME as a string, not the value itself
-- Example:
+When you're ready to make your final forecast, you MUST follow this TWO-STEP pattern in your response:
+
+STEP 1: Create the prediction variable in a ```repl code block
+STEP 2: Call FINAL_VAR("prediction") IMMEDIATELY after (OUTSIDE the code block, as plain text)
+
+Example of CORRECT completion:
   ```repl
-  prediction = [0.6, 0.4]
+  # After all your analysis, create the prediction array
+  prediction = [0.6, 0.4]  # Must sum to 1.0 and have option_count elements
+  print(f"Final forecast: {prediction}")
   ```
-  FINAL_VAR("prediction")  # Correct - pass variable name as string
-- This is MANDATORY - the task is not complete until you call FINAL_VAR()
+  FINAL_VAR("prediction")
+
+CRITICAL REQUIREMENTS:
+- BOTH steps must happen in the SAME response turn
+- The prediction variable must be created with EXECUTABLE code (not comments!)
+- Pass the VARIABLE NAME to FINAL_VAR as a string, not the value itself
+- Do NOT create prediction in one iteration and call FINAL_VAR in a later iteration
+- This is MANDATORY - without calling FINAL_VAR(), your work won't be recorded
+
+COMMON MISTAKES TO AVOID:
+- ❌ Calling FINAL_VAR("prediction") without creating the variable first
+- ❌ Creating prediction in one turn, then calling FINAL_VAR in a later turn
+- ❌ Writing only comments in the code block instead of executable code
+- ❌ Passing the value to FINAL_VAR: FINAL_VAR([0.6, 0.4]) is WRONG
 
 CRITICAL RULES:
 1. You are making predictions AS OF the cutoff_ts - pretend it's that date NOW
@@ -678,7 +694,7 @@ class RLMNoMarketForecaster(ForecastMethod):
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model: str = "gemini-3-pro",
+        model: str = "gemini-2.5-flash",  # Changed from gemini-3-pro (has 500 errors)
         max_iterations: int = 10,
         call_budget: int = 1000,
         verbose: bool = False,
@@ -1878,4 +1894,18 @@ def market_consensus_baseline(example: Example) -> List[float]:
 # - Try providing base rates explicitly (since model can't learn from prices)
 # - Add "similar markets" pre-computed in setup_code (reduce search burden)
 # - Test with llm_query() for deeper domain reasoning
+#
+
+# =============================================================================
+# 2026-01-22 PREDICTION EXTRACTION FIX - TWO-STEP PATTERN ENFORCEMENT
+# =============================================================================
+# 
+# Same fix as rlm_forecaster.py - see that file for full details.
+# 
+# PROBLEM: ~50%+ fallback rate due to prediction variable not existing when FINAL_VAR called
+# ROOT CAUSE: Model creating prediction in one iteration, calling FINAL_VAR in another
+# FIX: Made TWO-STEP pattern explicit in FORECASTER_SYSTEM_PROMPT (lines 358-386)
+# RESULT: 0% fallback rate in validation (n=3)
+# 
+# FILES MODIFIED: methods/rlm_no_market.py lines 358-386 (FORECASTER_SYSTEM_PROMPT)
 #
