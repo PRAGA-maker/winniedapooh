@@ -8,6 +8,20 @@ from pipeline.common.schema import TimeSeriesPoint
 from pipeline.common.logging import logger
 from pipeline.common.config import config
 
+# Module-level constant for SQLite upsert (used in streaming S3 scan)
+VITALS_UPSERT_SQL = """
+    INSERT INTO vitals (ticker, max_vol, max_oi, first_date, last_date, last_status, report_ticker, payout_type)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(ticker) DO UPDATE SET
+        max_vol = MAX(max_vol, excluded.max_vol),
+        max_oi = MAX(max_oi, excluded.max_oi),
+        first_date = MIN(first_date, excluded.first_date),
+        last_date = MAX(last_date, excluded.last_date),
+        last_status = CASE WHEN excluded.last_date >= last_date THEN excluded.last_status ELSE last_status END,
+        report_ticker = COALESCE(report_ticker, excluded.report_ticker),
+        payout_type = COALESCE(payout_type, excluded.payout_type)
+"""
+
 class KalshiBulkGrabber:
     def __init__(self):
         self.base_url = "https://kalshi-public-docs.s3.amazonaws.com/reporting"
@@ -17,6 +31,66 @@ class KalshiBulkGrabber:
     def _get_url_for_date(self, target_date: date) -> str:
         date_str = target_date.strftime("%Y-%m-%d")
         return f"{self.base_url}/market_data_{date_str}.json"
+
+    def _calculate_scan_workers(self, overclock: bool = False) -> int:
+        """
+        Dynamically calculate optimal number of workers based on system RAM.
+
+        Strategy:
+        - Target 50% of total RAM at peak (70% if overclock=True)
+        - Each streaming worker uses ~100MB at peak (conservative estimate includes
+          HTTP buffers, JSON parsing, batch buffer, and SQLite connection)
+        - SQLite limits: 16 workers normal, 20 overclock (WAL mode handles concurrency,
+          and scan is I/O bound so contention is minimal)
+        - Minimum 2 workers for parallelism benefit
+
+        Returns the calculated worker count.
+        """
+        import os
+        try:
+            import psutil
+            total_ram_gb = psutil.virtual_memory().total / (1024**3)
+        except ImportError:
+            # Fallback if psutil not available
+            total_ram_gb = 8.0  # Conservative default
+            logger.warning("psutil not available, assuming 8GB RAM for worker calculation")
+
+        cpu_count = os.cpu_count() or 4
+
+        # Memory budget
+        target_pct = 0.70 if overclock else 0.50
+        target_ram_gb = total_ram_gb * target_pct
+
+        # Each streaming worker uses ~100MB at peak (conservative)
+        # This includes: 2MB HTTP chunk + 1MB batch buffer + ~97MB safety margin
+        # for JSON parsing overhead, OS buffers, and SQLite temp storage
+        worker_mem_gb = 0.10  # 100MB per worker
+
+        # Calculate workers based on RAM
+        ram_workers = int(target_ram_gb / worker_mem_gb)
+
+        # Also consider CPU (I/O bound work can over-subscribe ~2x)
+        cpu_workers = cpu_count * 2
+
+        # SQLite concurrency limits - WAL mode handles concurrent writes well,
+        # and since scan is I/O bound (S3 downloads), workers spend most time
+        # waiting on network, not fighting for SQLite locks
+        sqlite_limit = 20 if overclock else 16
+
+        # Final calculation
+        workers = min(ram_workers, cpu_workers, sqlite_limit)
+        workers = max(workers, 2)  # Minimum 2 for parallelism benefit
+
+        mode = "overclock (70% RAM, 20 max)" if overclock else "normal (50% RAM, 16 max)"
+        logger.info(
+            f"  Dynamic worker calculation: {total_ram_gb:.1f}GB RAM, {cpu_count} CPUs, {mode}"
+        )
+        logger.info(
+            f"  => RAM-based: {ram_workers}, CPU-based: {cpu_workers}, SQLite limit: {sqlite_limit}"
+        )
+        logger.info(f"  => Using {workers} workers")
+
+        return workers
 
     def fetch_daily_bulk_stream(self, target_date: date, retries: int = 5) -> Iterator[Dict[str, Any]]:
         """
@@ -93,35 +167,49 @@ class KalshiBulkGrabber:
                     logger.error(f"Failed to finish {target_date} after {retries} attempts.")
                     raise
 
-    def scan_all_tickers(self, start_date: date, end_date: date, workers: int = 14, skip_dates: Optional[List[date]] = None) -> Dict[str, Dict[str, Any]]:
+    def scan_all_tickers(self, start_date: date, end_date: date, workers: Optional[int] = None, skip_dates: Optional[List[date]] = None, sequential: bool = False, overclock: bool = False) -> Dict[str, Dict[str, Any]]:
         """
-        Scan S3 bulk files in parallel to find unique tickers and their activity levels.
-        Uses a temporary SQLite database to avoid memory bloat when tracking millions of tickers.
+        Scan S3 bulk files to find unique tickers and their activity levels.
+        Uses streaming inserts to SQLite to avoid memory bloat.
+
+        Args:
+            workers: Number of parallel workers. If None, auto-calculated based on RAM.
+            skip_dates: Dates to skip (already processed).
+            sequential: If True, process dates one at a time (slower but lowest memory).
+            overclock: If True with sequential=False, target 70% RAM instead of 50%.
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
         import sqlite3
         import tempfile
-        
-        logger.info(f"Aggressively scanning S3 bulk files for activity between {start_date} and {end_date}...")
-        
+        import threading
+        import os
+
+        logger.info(f"Scanning S3 bulk files for activity between {start_date} and {end_date}...")
+
+        # Dynamic worker calculation based on RAM
+        if workers is None and not sequential:
+            workers = self._calculate_scan_workers(overclock=overclock)
+        elif workers is None:
+            workers = 1  # Sequential mode
+
         dates = []
         curr = start_date
         while curr <= end_date:
             if skip_dates is None or curr not in skip_dates:
                 dates.append(curr)
             curr += timedelta(days=1)
-            
+
         if not dates:
             return {}
-            
-        # Create a temporary SQLite database to track vitals
+
+        # Create a temporary SQLite database to track vitals (WAL mode for concurrent writes)
         temp_db_path = Path(tempfile.gettempdir()) / f"kalshi_vitals_{int(time.time())}.db"
-        conn = sqlite3.connect(temp_db_path)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=OFF")
-        conn.execute("PRAGMA cache_size=-1000000") # 1GB cache
-        
-        conn.execute("""
+        init_conn = sqlite3.connect(temp_db_path)
+        init_conn.execute("PRAGMA journal_mode=WAL")
+        init_conn.execute("PRAGMA synchronous=NORMAL")  # NORMAL is safer for concurrent writes
+        init_conn.execute("PRAGMA cache_size=-500000")  # 500MB cache
+
+        init_conn.execute("""
             CREATE TABLE vitals (
                 ticker TEXT PRIMARY KEY,
                 max_vol REAL,
@@ -133,140 +221,160 @@ class KalshiBulkGrabber:
                 payout_type TEXT
             )
         """)
-        conn.commit()
+        init_conn.commit()
+        init_conn.close()
 
-        def process_date(d, retries=5):
+        # Thread-safe progress tracking
+        progress_lock = threading.Lock()
+        processed_count = [0]  # Use list for mutable reference in closure
+        BATCH_SIZE = 5000
+
+        def process_date_streaming(d, db_path, retries=5):
+            """Process a single date with streaming inserts to SQLite."""
+            # Each thread gets its own connection (SQLite WAL mode handles concurrency)
+            thread_conn = sqlite3.connect(db_path, timeout=60.0)
+            thread_conn.execute("PRAGMA synchronous=NORMAL")
+
             url = self._get_url_for_date(d)
-            ticker_vital_signs = {}
-            for attempt in range(retries):
-                try:
-                    # Use faster streaming and parsing
-                    with requests.get(url, stream=True, timeout=60) as r:
-                        if r.status_code == 200:
-                            content_length = r.headers.get("Content-Length")
-                            if content_length:
-                                try:
-                                    content_length = int(content_length)
-                                    if content_length > 500 * 1024 * 1024:
-                                        logger.warning(
-                                            f"  Large S3 file for {d}: {content_length / (1024**2):.1f} MB. "
-                                            "Scan may take several minutes."
-                                        )
-                                except ValueError:
-                                    content_length = None
-                            else:
-                                content_length = None
+            batch_buffer = []
+            records_processed = 0
 
-                            buffer = []
-                            bytes_read = 0
-                            last_log_time = time.time()
-                            last_log_bytes = 0
-                            log_interval_seconds = 30
-                            log_interval_bytes = 256 * 1024 * 1024
-
-                            for chunk in r.iter_content(chunk_size=2*1024*1024):
-                                if not chunk: continue
-                                bytes_read += len(chunk)
-                                now = time.time()
-                                if (now - last_log_time) >= log_interval_seconds or (bytes_read - last_log_bytes) >= log_interval_bytes:
-                                    if content_length:
-                                        pct = (bytes_read / content_length) * 100.0
-                                        logger.info(
-                                            f"  {d} scan progress: {bytes_read / (1024**2):.1f} MB "
-                                            f"({pct:.1f}%)"
-                                        )
-                                    else:
-                                        logger.info(
-                                            f"  {d} scan progress: {bytes_read / (1024**2):.1f} MB"
-                                        )
-                                    last_log_time = now
-                                    last_log_bytes = bytes_read
-                                # Validate chunk is bytes - if not, connection is corrupted, trigger retry
-                                if not isinstance(chunk, bytes):
-                                    raise requests.exceptions.ChunkedEncodingError(
-                                        f"Corrupt chunk for {d}: expected bytes, got {type(chunk).__name__}"
-                                    )
-                                chunk_str = chunk.decode('utf-8', errors='ignore')
-                                parts = chunk_str.split('},')
-                                
-                                if len(parts) == 1:
-                                    buffer.append(parts[0])
+            try:
+                for attempt in range(retries):
+                    try:
+                        with requests.get(url, stream=True, timeout=120) as r:
+                            if r.status_code == 200:
+                                content_length = r.headers.get("Content-Length")
+                                if content_length:
+                                    try:
+                                        content_length = int(content_length)
+                                        if content_length > 500 * 1024 * 1024:
+                                            logger.info(
+                                                f"    Large S3 file for {d}: {content_length / (1024**2):.1f} MB"
+                                            )
+                                    except ValueError:
+                                        content_length = None
                                 else:
-                                    buffer.append(parts[0])
-                                    full_obj_str = "".join(buffer) + "}"
-                                    self._update_vitals(ticker_vital_signs, full_obj_str, d)
-                                    
-                                    for i in range(1, len(parts) - 1):
-                                        self._update_vitals(ticker_vital_signs, parts[i] + "}", d)
-                                    
-                                    buffer = [parts[-1]]
-                            return ticker_vital_signs
-                        elif r.status_code == 404:
-                            return {} # File doesn't exist, skip
-                        else:
-                            r.raise_for_status()
-                except (requests.exceptions.RequestException, ConnectionError, requests.exceptions.Timeout) as e:
-                    if attempt < retries - 1:
-                        sleep_time = 2 ** attempt
-                        logger.warning(f"  Transient error for {d}: {e}. Retrying in {sleep_time}s...")
-                        time.sleep(sleep_time)
-                    else:
-                        logger.error(f"  Failed scanning tickers for {d} after {retries} attempts: {e}")
-                        return {}
-            return {}
+                                    content_length = None
 
-        processed_count = 0
-        ticker_count = 0
-        
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = {executor.submit(process_date, d): d for d in dates}
-            for future in as_completed(futures):
-                day_vitals = future.result()
-                if day_vitals:
-                    # Batch insert into SQLite
-                    # We use INSERT OR REPLACE and manual max() logic if we want to be perfect, 
-                    # but since we are processing dates in random order, we should use a more robust merge.
-                    # Actually, a simple way is to insert everything and then aggregate, 
-                    # but that would be a very large table.
-                    # Let's use INSERT OR REPLACE but we need to keep the best values.
-                    
-                    rows = []
-                    for ticker, v in day_vitals.items():
-                        rows.append((
-                            ticker, v["max_vol"], v["max_oi"], v["first_date"], 
-                            v["last_date"], v["last_status"], v["report_ticker"], v.get("payout_type")
-                        ))
-                    
-                    # Optimized Upsert for SQLite 3.24+
-                    conn.executemany("""
-                        INSERT INTO vitals (ticker, max_vol, max_oi, first_date, last_date, last_status, report_ticker, payout_type)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        ON CONFLICT(ticker) DO UPDATE SET
-                            max_vol = MAX(max_vol, excluded.max_vol),
-                            max_oi = MAX(max_oi, excluded.max_oi),
-                            first_date = MIN(first_date, excluded.first_date),
-                            last_date = MAX(last_date, excluded.last_date),
-                            last_status = CASE WHEN excluded.last_date >= last_date THEN excluded.last_status ELSE last_status END,
-                            report_ticker = COALESCE(report_ticker, excluded.report_ticker),
-                            payout_type = COALESCE(payout_type, excluded.payout_type)
-                    """, rows)
-                    conn.commit()
-                
-                processed_count += 1
-                if processed_count % 20 == 0 or processed_count == len(dates):
-                    ticker_count = conn.execute("SELECT count(*) FROM vitals").fetchone()[0]
-                    logger.info(f"  Scanned {processed_count}/{len(dates)} files... ({ticker_count} unique tickers tracked)")
-        
-        # Finally, we return the filtered map of ONLY active tickers to save memory
+                                buffer = []
+                                bytes_read = 0
+                                last_log_time = time.time()
+                                last_log_bytes = 0
+                                log_interval_seconds = 30
+                                log_interval_bytes = 256 * 1024 * 1024
+
+                                for chunk in r.iter_content(chunk_size=2*1024*1024):
+                                    if not chunk: continue
+                                    bytes_read += len(chunk)
+                                    now = time.time()
+                                    if (now - last_log_time) >= log_interval_seconds or (bytes_read - last_log_bytes) >= log_interval_bytes:
+                                        if content_length:
+                                            pct = (bytes_read / content_length) * 100.0
+                                            logger.info(f"    {d}: {bytes_read / (1024**2):.1f} MB ({pct:.1f}%)")
+                                        else:
+                                            logger.info(f"    {d}: {bytes_read / (1024**2):.1f} MB")
+                                        last_log_time = now
+                                        last_log_bytes = bytes_read
+
+                                    if not isinstance(chunk, bytes):
+                                        raise requests.exceptions.ChunkedEncodingError(
+                                            f"Corrupt chunk for {d}: expected bytes, got {type(chunk).__name__}"
+                                        )
+                                    chunk_str = chunk.decode('utf-8', errors='ignore')
+                                    parts = chunk_str.split('},')
+
+                                    if len(parts) == 1:
+                                        buffer.append(parts[0])
+                                    else:
+                                        buffer.append(parts[0])
+                                        full_obj_str = "".join(buffer) + "}"
+
+                                        row = self._parse_vitals_row(full_obj_str, d)
+                                        if row:
+                                            batch_buffer.append(row)
+                                            records_processed += 1
+
+                                        for i in range(1, len(parts) - 1):
+                                            row = self._parse_vitals_row(parts[i] + "}", d)
+                                            if row:
+                                                batch_buffer.append(row)
+                                                records_processed += 1
+
+                                        buffer = [parts[-1]]
+
+                                        # Flush batch when full
+                                        if len(batch_buffer) >= BATCH_SIZE:
+                                            thread_conn.executemany(VITALS_UPSERT_SQL, batch_buffer)
+                                            thread_conn.commit()
+                                            batch_buffer = []
+
+                                # Flush remaining buffer
+                                if batch_buffer:
+                                    thread_conn.executemany(VITALS_UPSERT_SQL, batch_buffer)
+                                    thread_conn.commit()
+
+                                # Update progress
+                                with progress_lock:
+                                    processed_count[0] += 1
+                                    if processed_count[0] % 5 == 0 or processed_count[0] == len(dates):
+                                        count = thread_conn.execute("SELECT count(*) FROM vitals").fetchone()[0]
+                                        logger.info(f"  Progress: {processed_count[0]}/{len(dates)} dates ({count} unique tickers)")
+
+                                return records_processed
+                            elif r.status_code == 404:
+                                with progress_lock:
+                                    processed_count[0] += 1
+                                return 0
+                            else:
+                                r.raise_for_status()
+                    except (requests.exceptions.RequestException, ConnectionError, requests.exceptions.Timeout) as e:
+                        if attempt < retries - 1:
+                            sleep_time = 2 ** attempt
+                            logger.warning(f"    Transient error for {d}: {e}. Retrying in {sleep_time}s...")
+                            time.sleep(sleep_time)
+                            batch_buffer = []
+                            records_processed = 0
+                        else:
+                            logger.error(f"    Failed scanning {d} after {retries} attempts: {e}")
+                            with progress_lock:
+                                processed_count[0] += 1
+                            return 0
+                return 0
+            finally:
+                thread_conn.close()
+
+        # Choose parallel or sequential processing
+        if sequential:
+            logger.info(f"  Processing {len(dates)} dates sequentially (--sequential mode)...")
+            for i, d in enumerate(dates):
+                logger.info(f"  [{i+1}/{len(dates)}] Scanning {d}...")
+                process_date_streaming(d, temp_db_path)
+        else:
+            effective_workers = min(workers, len(dates))
+            logger.info(f"  Processing {len(dates)} dates with {effective_workers} parallel workers (streaming inserts)...")
+            with ThreadPoolExecutor(max_workers=effective_workers) as executor:
+                futures = {executor.submit(process_date_streaming, d, temp_db_path): d for d in dates}
+                for future in as_completed(futures):
+                    try:
+                        future.result()  # Propagate exceptions
+                    except Exception as e:
+                        logger.error(f"  Worker error: {e}")
+
+        # Read final results
+        final_conn = sqlite3.connect(temp_db_path)
+        ticker_count = final_conn.execute("SELECT count(*) FROM vitals").fetchone()[0]
+
+        # Return filtered map of ONLY active tickers to save memory
         logger.info("Filtering for active tickers in SQLite...")
         active_query = """
-            SELECT * FROM vitals 
-            WHERE max_vol > 0 
-               OR max_oi > 0 
+            SELECT * FROM vitals
+            WHERE max_vol > 0
+               OR max_oi > 0
                OR last_status IN ('finalized', 'determined', 'settled')
         """
         all_vitals = {}
-        for row in conn.execute(active_query):
+        for row in final_conn.execute(active_query):
             ticker = row[0]
             all_vitals[ticker] = {
                 "max_vol": row[1],
@@ -277,15 +385,38 @@ class KalshiBulkGrabber:
                 "report_ticker": row[6],
                 "payout_type": row[7]
             }
-        
-        conn.close()
+
+        final_conn.close()
         try:
             temp_db_path.unlink()
         except:
             pass
-            
+
         logger.info(f"Scan complete. Found {len(all_vitals)} active tickers (out of {ticker_count} total).")
         return all_vitals
+
+    def _parse_vitals_row(self, obj_str: str, d: date) -> Optional[tuple]:
+        """Parse a JSON object string into a vitals tuple for batch insert."""
+        clean_obj = obj_str.lstrip('[, \n\r')
+        if not clean_obj.endswith('}'):
+            return None
+        try:
+            obj = json.loads(clean_obj)
+            ticker = obj.get("ticker_name")
+            if not ticker:
+                return None
+            return (
+                ticker,
+                float(obj.get("daily_volume", 0) or 0),
+                float(obj.get("open_interest", 0) or 0),
+                d.isoformat(),
+                d.isoformat(),
+                obj.get("status", "unknown"),
+                obj.get("report_ticker"),
+                obj.get("payout_type")
+            )
+        except:
+            return None
 
     def _update_vitals(self, vitals_dict: Dict[str, Any], obj_str: str, d: date):
         """Helper to update ticker vitals from a single JSON object string."""
@@ -441,4 +572,17 @@ class KalshiBulkGrabber:
 #     validate isinstance(chunk, bytes) and raise ChunkedEncodingError to trigger the existing
 #     retry loop with exponential backoff. This is the systemic fix - reuse existing retry
 #     infrastructure rather than adding silent error suppression.
+# 18. OOM Fix in S3 Scanning (2026-01-21): The original scan_all_tickers() accumulated entire
+#     day's ticker vitals in a dictionary before returning. With 14 parallel workers and large
+#     files (1.6GB+ for late December 2025), this caused 1.4GB+ peak memory and OOM crashes.
+#     FIX: Replaced dictionary accumulation with streaming batch inserts (5000 records/batch)
+#     directly to SQLite. Each parallel worker now gets its own SQLite connection (WAL mode
+#     handles concurrent writes). Workers are now DYNAMICALLY calculated based on system RAM:
+#     - Default mode: Target 50% RAM, max 16 workers
+#     - Overclock mode (--overclock): Target 70% RAM, max 20 workers
+#     - Sequential mode (--sequential): 1 worker, lowest memory usage
+#     Formula: min(RAM_budget / 100MB_per_worker, CPUs * 2, SQLite_limit)
+#     Example: 32GB RAM system gets 16 workers default, 20 with overclock.
+#     Key insight: With streaming inserts, memory is bounded per worker (~100MB), so SQLite
+#     concurrency becomes the limiting factor, not RAM.
 

@@ -869,7 +869,9 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
                           metaculus_limit: Optional[int] = None, name: Optional[str] = None,
                           kalshi_bid_ask_backfill: bool = False, skip_kalshi: bool = False,
                           kalshi_s3_only: bool = False,
-                          kalshi_batch_size: Optional[int] = None):
+                          kalshi_batch_size: Optional[int] = None,
+                          sequential_scan: bool = False,
+                          overclock_scan: bool = False):
     logger.info(
         "Starting unified dataset build "
         f"(limit={limit}, metaculus_limit={metaculus_limit}, name={name}, "
@@ -936,7 +938,7 @@ def build_unified_dataset(limit: Optional[int] = None, use_cache: bool = True, k
 
         # STEP A: Aggressive Discovery and Activity Scan from S3 (Only for new dates)
         if dates_to_scan:
-            vitals_map = kalshi_bulk.scan_all_tickers(dates_to_scan[0], dates_to_scan[-1], workers=scan_workers)
+            vitals_map = kalshi_bulk.scan_all_tickers(dates_to_scan[0], dates_to_scan[-1], sequential=sequential_scan, overclock=overclock_scan)
         else:
             logger.info("All Kalshi dates in range already processed. Skipping S3 scan.")
             vitals_map = {}

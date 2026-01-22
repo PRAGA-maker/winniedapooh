@@ -19,6 +19,7 @@ dependencies = [
     "matplotlib>=3.10.0",
     "tqdm>=4.67.1",
     "google-generativeai>=0.8.0",
+    "google-genai>=1.60.0",
 ]
 
 [tool.uv]
