@@ -1,4 +1,0 @@
-Starting run: rlm_diagnostic_test
-Training on 1000 records from 'train' split...
-Creating training examples:   0%|          | 0/1000 [00:00<?, ?it/s]Creating training examples:  93%|#########2| 928/1000 [00:00<00:00, 9269.93it/s]                                                                                Evaluating on 'test' split (10 records)...
-Creating evaluation examples:   0%|          | 0/10 [00:00<?, ?it/s]                                                                    

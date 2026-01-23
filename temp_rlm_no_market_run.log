@@ -1,6 +1,0 @@
-Starting run: rlm_no_market_ablation_pilot
-Training on 1000 records from 'train' split...
-Creating training examples:   0%|          | 0/1000 [00:00<?, ?it/s]                                                                    Evaluating on 'test' split (10 records)...
-Creating evaluation examples:   0%|          | 0/10 [00:00<?, ?it/s]                                                                    Evaluating on 'bench' split (10 records)...
-Creating evaluation examples:   0%|          | 0/10 [00:00<?, ?it/s]                                                                    Run indexed to database
-Run complete. Results saved to data\outputs\rlm-no-market_99914b93\run_1769118166_rlm_no_market_ablation_pilot

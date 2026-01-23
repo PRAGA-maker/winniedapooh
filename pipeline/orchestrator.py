@@ -52,7 +52,7 @@ def _insert_history_batch_direct(db_path: Path, source: str, points_with_metadat
     Direct SQLite insert for use within worker processes.
     Creates its own connection to avoid multiprocessing issues.
     """
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=60.0)  # 60 second timeout for lock waits
     conn.execute("PRAGMA synchronous=OFF")
     conn.execute("PRAGMA journal_mode=WAL")
 
@@ -183,7 +183,8 @@ class CanonicalStore:
         self._init_db()
 
     def _get_conn(self):
-        return sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=60.0)  # 60 second timeout for lock waits
+        return conn
 
     def _init_db(self):
         with self._get_conn() as conn:
@@ -1661,3 +1662,11 @@ if __name__ == "__main__":
 #     BEHAVIOR: NO CHANGE to usable data - only skips markets that would be filtered out by tasks
 #     anyway. Month build expected impact: 100-500k (after S3 filter) → 50-100k (after history filter).
 #     Combined with S3 fix: 11.8M → 50-100k markets (99.5%+ reduction), 80+ hours → 1-2 hours.
+# 52. SQLITE CONCURRENCY TIMEOUT (2026-01-22): Fixed "database is locked" errors during parallel
+#     history ingestion. Issue occurred when 4+ parallel workers all tried to write simultaneously,
+#     especially on large files (100k+ records) and checkpoint writes. SQLite's default timeout is
+#     only 5 seconds, causing lock contention failures. FIX: Increased connection timeout to 60
+#     seconds in both _get_conn() and process_kalshi_day() worker function. WAL mode was already
+#     enabled (allows better concurrency), but timeout was the missing piece. With 60s timeout,
+#     workers wait longer for locks instead of failing immediately. Alternative would be reducing
+#     process_workers from 4 to 2, but that's slower. The 60s timeout handles contention gracefully.

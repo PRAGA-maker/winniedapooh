@@ -169,13 +169,18 @@ def _example_to_neurallambda_v1(
     })
 
     # 4. Target (what we're predicting)
-    if len(example.options) == 2:
-        # Binary market - assume target is a float
-        target = f"Probability: {example.target:.2f}"
+    # Target is always a list of probabilities
+    if isinstance(example.target, (list, tuple)):
+        if len(example.target) == 2:
+            # Binary market - show first option's probability
+            target = f"Probability: {example.target[0]:.2f}"
+        else:
+            # Multi-option
+            formatted = ", ".join([f"{p:.2f}" for p in example.target])
+            target = f"Probabilities: [{formatted}]"
     else:
-        # Multi-option - assume target is list/array
-        # TODO: Better formatting for multi-option predictions
-        target = f"Probabilities: {example.target}"
+        # Single float (legacy)
+        target = f"Probability: {float(example.target):.2f}"
 
     prepared_data.append({
         "type": "text",
@@ -247,10 +252,14 @@ def _example_to_neurallambda_v2(
         })
 
     # 3. Target
-    if len(example.options) == 2:
-        target = f"Final: {example.target:.2f}"
+    if isinstance(example.target, (list, tuple)):
+        if len(example.target) == 2:
+            target = f"Final: {example.target[0]:.2f}"
+        else:
+            formatted = ", ".join([f"{p:.2f}" for p in example.target])
+            target = f"Final: [{formatted}]"
     else:
-        target = f"Final: {example.target}"
+        target = f"Final: {float(example.target):.2f}"
 
     prepared_data.append({
         "type": "text",

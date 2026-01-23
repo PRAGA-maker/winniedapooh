@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 # Add external/neurallambda to path
+sys.path.insert(0, str(Path(__file__).parent.parent / "external" / "neurallambda" / "src"))
 sys.path.insert(0, str(Path(__file__).parent.parent / "external" / "neurallambda"))
 sys.path.insert(0, str(Path(__file__).parent.parent / "external" / "neurallambda" / "experiment"))
 
@@ -64,7 +65,8 @@ class NeuralLambdaConfig:
     which_lor: int = 2  # 1=all QKVOGUD, 2=MLP-only (G,U,D)
 
     # Training hyperparameters (from literature review)
-    learning_rate: float = 1e-5  # Conservative (1e-3 can diverge)
+    optimizer: str = "adamw"  # "adamw" or "muon"
+    learning_rate: float = 1e-5  # Conservative for AdamW (1e-3 can diverge), use 0.02 for Muon
     weight_decay: float = 1e-2
     batch_size: int = 32
     epochs: int = 50
@@ -167,7 +169,7 @@ class NeuralLambdaForecaster(ForecastMethod):
             print(f"[NeuralLambda] Config: {self.config}")
 
     def _load_model(self):
-        """Load and modify Qwen2 model for LoR support."""
+        """Load Qwen2 model with standard transformers (not neurallambda's modified version)."""
         if self._model is not None:
             return
 
@@ -175,9 +177,7 @@ class NeuralLambdaForecaster(ForecastMethod):
             print(f"[NeuralLambda] Loading model: {self.config.model_name}")
 
         try:
-            # Import neurallambda's modified model
-            from t14_homoiconic_llm_model_02 import Qwen2ForCausalLM
-            from transformers import AutoTokenizer
+            from transformers import AutoModelForCausalLM, AutoTokenizer
 
             # Load tokenizer
             self._tokenizer = AutoTokenizer.from_pretrained(self.config.model_name)
@@ -191,13 +191,12 @@ class NeuralLambdaForecaster(ForecastMethod):
                 if self.verbose:
                     print(f"[NeuralLambda] Added {len(new_tokens)} meta tokens")
 
-            # Load model
+            # Load model (standard transformers, not neurallambda's modified version)
             dtype = torch.float32 if self.config.dtype == "float32" else torch.bfloat16
-            self._model = Qwen2ForCausalLM.from_pretrained(
+            self._model = AutoModelForCausalLM.from_pretrained(
                 self.config.model_name,
                 torch_dtype=dtype,
                 device_map=self.config.device,
-                _attn_implementation='eager',  # Required for LoR
             )
 
             # Resize embeddings for new tokens
@@ -207,26 +206,23 @@ class NeuralLambdaForecaster(ForecastMethod):
             for param in self._model.parameters():
                 param.requires_grad = False
 
-            # Initialize LoR modules
+            # Initialize LoR modules (using inline definition, not neurallambda's)
             self._init_lor_modules()
 
             if self.verbose:
-                trainable = sum(p.numel() for p in self._model.parameters() if p.requires_grad)
+                trainable = sum(p.numel() for p in self._lor_modules['G'].parameters()) * 3
                 total = sum(p.numel() for p in self._model.parameters())
-                print(f"[NeuralLambda] Model loaded: {total:,} params, {trainable:,} trainable")
+                print(f"[NeuralLambda] Model loaded: {total:,} params, ~{trainable:,} trainable (LoR modules)")
 
         except Exception as e:
             raise RuntimeError(f"Failed to load NeuralLambda model: {e}")
 
     def _init_lor_modules(self):
         """Initialize LORModule for target layer."""
-        try:
-            from t14_homoiconic_llm_05 import LORModule
-        except ImportError:
-            # Fallback: define LORModule inline
-            if self.verbose:
-                print("[NeuralLambda] Using inline LORModule definition")
-            LORModule = self._define_lor_module()
+        # Always use inline LORModule (neurallambda's version is incompatible with current transformers)
+        if self.verbose:
+            print("[NeuralLambda] Using inline LORModule definition")
+        LORModule = self._define_lor_module()
 
         hidden_size = self._model.config.hidden_size
         intermediate_size = self._model.config.intermediate_size
@@ -318,11 +314,30 @@ class NeuralLambdaForecaster(ForecastMethod):
         # Note: We can't easily separate these, so we'll train all embeddings
         # This is a simplification - full implementation would mask non-meta-token gradients
 
-        self._optimizer = AdamW(
-            params,
-            lr=self.config.learning_rate,
-            weight_decay=self.config.weight_decay,
-        )
+        if self.config.optimizer == "muon":
+            try:
+                from muon import Muon
+                self._optimizer = Muon(
+                    params,
+                    lr=self.config.learning_rate,
+                    momentum=0.95,
+                )
+                if self.verbose:
+                    print(f"[NeuralLambda] Using Muon optimizer (lr={self.config.learning_rate})")
+            except ImportError:
+                if self.verbose:
+                    print("[NeuralLambda] Muon not installed, falling back to AdamW")
+                self._optimizer = AdamW(
+                    params,
+                    lr=self.config.learning_rate,
+                    weight_decay=self.config.weight_decay,
+                )
+        else:
+            self._optimizer = AdamW(
+                params,
+                lr=self.config.learning_rate,
+                weight_decay=self.config.weight_decay,
+            )
 
         # Learning rate schedule: warmup + cosine decay
         warmup_scheduler = LinearLR(
@@ -346,9 +361,9 @@ class NeuralLambdaForecaster(ForecastMethod):
         )
 
         if self.verbose:
-            print(f"[NeuralLambda] Optimizer: AdamW(lr={self.config.learning_rate}, "
-                  f"wd={self.config.weight_decay})")
-            print(f"[NeuralLambda] Schedule: {self.config.warmup_steps} warmup → "
+            opt_name = "Muon" if self.config.optimizer == "muon" else "AdamW"
+            print(f"[NeuralLambda] Optimizer: {opt_name}(lr={self.config.learning_rate})")
+            print(f"[NeuralLambda] Schedule: {self.config.warmup_steps} warmup -> "
                   f"{decay_steps} cosine decay")
 
     def _prepare_batch(self, examples: List[Example]) -> Dict[str, TensorType]:
