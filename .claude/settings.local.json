@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tree:*)",
+      "Bash(git mv:*)",
+      "Bash(git rm:*)",
+      "Bash(uv run:*)",
+      "Bash(timeout:*)",
+      "Bash(Start-Sleep -Seconds 30)",
+      "Bash(Get-Content \"C:\\\\Users\\\\prapa\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-prapa-Documents-GitHub-winniedapooh\\\\tasks\\\\b11d283.output\" -Tail 100)",
+      "Bash(uv run python:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(git checkout:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:ai.google.dev)",
+      "WebFetch(domain:alexzhang13.github.io)",
+      "WebFetch(domain:arxiv.org)",
+      "WebFetch(domain:raw.githubusercontent.com)"
+    ]
+  }
+}
