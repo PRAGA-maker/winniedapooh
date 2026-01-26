@@ -9,10 +9,10 @@ This directory contains tools for analyzing and visualizing experiment results f
 uv run scripts/results/list_runs.py
 
 # Compare methods
-uv run scripts/results/compare_runs.py --task resolve_binary --latest
+uv run scripts/results/compare_runs.py --task resolve_event --latest
 
 # Visualize results
-uv run scripts/results/plot_results.py --task resolve_binary --metric test_brier --output results.png
+uv run scripts/results/plot_results.py --task resolve_event --metric test_brier --output results.png
 
 # Index pre-existing runs
 uv run scripts/results/scan_existing_runs.py
@@ -32,7 +32,7 @@ uv run scripts/results/list_runs.py
 uv run scripts/results/list_runs.py --method last_price
 
 # Filter by task
-uv run scripts/results/list_runs.py --task resolve_binary
+uv run scripts/results/list_runs.py --task resolve_event
 
 # Show runs from last 7 days
 uv run scripts/results/list_runs.py --since 7
@@ -52,7 +52,7 @@ Compare performance across different forecasting methods.
 
 ```bash
 # Compare all methods on a task (latest run of each)
-uv run scripts/results/compare_runs.py --task resolve_binary --latest
+uv run scripts/results/compare_runs.py --task resolve_event --latest
 
 # Compare two specific runs
 uv run scripts/results/compare_runs.py --runs run_id_1 run_id_2
@@ -61,7 +61,7 @@ uv run scripts/results/compare_runs.py --runs run_id_1 run_id_2
 uv run scripts/results/compare_runs.py --method last_price
 
 # Export comparison to CSV
-uv run scripts/results/compare_runs.py --task resolve_binary --output comparison.csv
+uv run scripts/results/compare_runs.py --task resolve_event --output comparison.csv
 ```
 
 **Output**: Performance table with metrics, best performer, and improvement percentages.
@@ -72,19 +72,19 @@ Generate plots comparing methods and showing trends.
 
 ```bash
 # Bar chart: compare methods on one metric
-uv run scripts/results/plot_results.py --task resolve_binary --metric test_brier
+uv run scripts/results/plot_results.py --task resolve_event --metric test_brier
 
 # Grouped bar chart: multiple metrics
-uv run scripts/results/plot_results.py --task resolve_binary --metrics test_brier,test_logloss
+uv run scripts/results/plot_results.py --task resolve_event --metrics test_brier,test_logloss
 
 # Line chart: performance over time
 uv run scripts/results/plot_results.py --method mlp_nn --timeline
 
 # Scatter plot: test vs bench performance
-uv run scripts/results/plot_results.py --task resolve_binary --scatter
+uv run scripts/results/plot_results.py --task resolve_event --scatter
 
 # Save to file
-uv run scripts/results/plot_results.py --task resolve_binary --output results.png
+uv run scripts/results/plot_results.py --task resolve_event --output results.png
 ```
 
 **Output**: matplotlib plots (displayed or saved to file).

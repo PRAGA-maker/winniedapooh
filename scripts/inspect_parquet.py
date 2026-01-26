@@ -35,47 +35,62 @@ def inspect_latest_parquet():
     print("\nSample row (first 5 columns):")
     print(df.iloc[0, :5])
     
-    print("\nStats on 'belief' list length:")
-    df['belief_len'] = df['belief'].apply(len)
-    print(df.groupby('source')['belief_len'].describe())
+    print("\nStats on option count:")
+    def count_options(raw):
+        if not raw:
+            return 0
+        try:
+            return len(json.loads(raw))
+        except json.JSONDecodeError:
+            return 0
+    df['option_count'] = df['options_json'].apply(count_options)
+    print(df.groupby('source')['option_count'].describe())
     
     # Check for empty belief lists
-    empty_belief = df[df['belief_len'] == 0]
-    if len(empty_belief) > 0:
-        print(f"\nRows with empty belief lists: {len(empty_belief)}")
-        print(empty_belief.groupby('source').size())
+    empty_options = df[df['option_count'] == 0]
+    if len(empty_options) > 0:
+        print(f"\nRows with empty options: {len(empty_options)}")
+        print(empty_options.groupby('source').size())
     else:
-        print("\nNo rows with empty belief lists found.")
+        print("\nNo rows with empty options found.")
 
     # More granular belief value stats (min/max/mean)
     print("\nBelief value stats per source (expanded):")
-    def get_list_stats(lst):
-        if lst is None or len(lst) == 0:
-            return pd.Series({'min': None, 'max': None, 'mean': None, 'count': 0})
-        
-        # Filter out None values from the list
-        vals = [v for v in lst if v is not None and not (isinstance(v, float) and pd.isna(v))]
+    def get_option_beliefs(raw):
+        if not raw:
+            return []
+        try:
+            options = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+        beliefs = []
+        for option in options:
+            vals = option.get("belief") or []
+            beliefs.extend([v for v in vals if v is not None and not (isinstance(v, float) and pd.isna(v))])
+        return beliefs
+
+    def get_list_stats(vals):
         if not vals:
             return pd.Series({'min': None, 'max': None, 'mean': None, 'count': 0})
         return pd.Series({'min': min(vals), 'max': max(vals), 'mean': sum(vals)/len(vals), 'count': len(vals)})
 
-    source_stats = df.groupby('source')['belief'].apply(lambda x: x.apply(get_list_stats).mean(numeric_only=True))
+    source_stats = df.groupby('source')['options_json'].apply(lambda x: x.apply(get_option_beliefs).apply(get_list_stats).mean(numeric_only=True))
     print(source_stats)
 
     # Ratio of non-empty to total
-    print("\nNon-empty timeseries ratio:")
-    non_empty_ratio = df.groupby('source')['belief_len'].apply(lambda x: (x > 0).mean())
+    print("\nNon-empty option ratio:")
+    non_empty_ratio = df.groupby('source')['option_count'].apply(lambda x: (x > 0).mean())
     print(non_empty_ratio)
 
     # Check Kalshi specifically
     kalshi_df = df[df['source'] == 'kalshi']
     if len(kalshi_df) > 0:
-        print("\nKalshi sample (first 5 tickers and belief lengths):")
-        print(kalshi_df[['market_id', 'belief_len']].head(5))
-        
-        # Check if any have non-None beliefs
-        non_null_belief = kalshi_df['belief'].apply(lambda x: any(v is not None for v in x)).sum()
-        print(f"Kalshi markets with at least one non-null belief: {non_null_belief}/{len(kalshi_df)}")
+        print("\nKalshi sample (first 5 events and option counts):")
+        print(kalshi_df[['event_id', 'option_count']].head(5))
 
 if __name__ == "__main__":
     inspect_latest_parquet()
+
+# --- LESSONS LEARNED ---
+# 1. options_json can be large; only sample when exploring heavy fields.
+# 2. Keep option_count derived to avoid bloating the canonical schema.

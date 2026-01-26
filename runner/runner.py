@@ -10,19 +10,13 @@ from typing import Dict, Any, List
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from dataobject.dataset import MarketDataset
-from dataobject.splits import SplitManager
-from dataobject.tasks.resolve_binary import ResolveBinaryTask
-from dataobject.tasks.predict_week_out import PredictWeekOutTask
+from forecasting.dataset import EventDataset
+from forecasting.splits import SplitManager
+from forecasting.tasks.registry import build_task
 from methods.registry import build_method
 from runner.experiment import RunSpec
 from runner.evaluator import evaluate
 from runner.results_db import ResultsDatabase
-
-TASK_REGISTRY = {
-    "resolve_binary": ResolveBinaryTask,
-    "predict_week_out": PredictWeekOutTask
-}
 
 def _ensure_dataset_available(data_dir: Path) -> Path:
     """
@@ -156,13 +150,13 @@ def run_experiment(spec: RunSpec):
         f.write(f"Description: {spec.description}\n")
         f.write(f"Method Params: {json.dumps(spec.method_params, indent=2)}\n")
 
-    dataset = MarketDataset.load(spec.dataset_path)
+    dataset = EventDataset.load(spec.dataset_path)
     if spec.split_path:
         splits = SplitManager.load(dataset, Path(spec.split_path))
     else:
         splits = SplitManager.build(dataset, seed=spec.seed)
         
-    task = TASK_REGISTRY[spec.task](**spec.task_params)
+    task = build_task(spec.task, spec.task_params)
     method = build_method(spec.method, spec.method_params)
     
     # 1. Training Phase
@@ -229,7 +223,7 @@ def main():
     parser.add_argument("--name", type=str, default="experiment", help="Run name")
     parser.add_argument("--method", type=str, default="last_price", help="Forecasting method to use")
     parser.add_argument("--method-params", type=str, default="{}", help="JSON string of method parameters")
-    parser.add_argument("--task", type=str, default="resolve_binary", help="Task to evaluate on")
+    parser.add_argument("--task", type=str, default="resolve_event", help="Task to evaluate on")
     parser.add_argument("--task-params", type=str, default="{}", help="JSON string of task parameters")
     parser.add_argument("--dataset", type=str, help="Path to unified parquet dataset (defaults to latest)")
     parser.add_argument("--split", type=str, help="Path to splits directory (optional)")
@@ -276,3 +270,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# --- LESSONS LEARNED ---
+# 1. Event-level dataset: runner expects event rows with options_json.
+# 2. Task registry defaults should reflect event tasks (resolve_event).

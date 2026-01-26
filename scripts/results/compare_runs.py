@@ -10,10 +10,10 @@ Usage examples:
     uv run scripts/compare_runs.py --method last_price
     
     # Compare all methods on a task (latest run of each)
-    uv run scripts/compare_runs.py --task resolve_binary --latest
+    uv run scripts/compare_runs.py --task resolve_event --latest
     
     # Export comparison to CSV
-    uv run scripts/compare_runs.py --task resolve_binary --output comparison.csv
+    uv run scripts/compare_runs.py --task resolve_event --output comparison.csv
 """
 
 import sys
@@ -276,6 +276,9 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# --- LESSONS LEARNED ---
+# 1. Task names are free-form; keep CLI examples synced with runner defaults.
 
 
 # LESSONS LEARNED:

@@ -24,16 +24,28 @@ Prerequisites: Python 3.13+, `uv` (package manager).
 | Step | Command | Description |
 |------|---------|-------------|
 | 1 | `uv sync` or `uv sync --all-groups` | Install dependencies. Use `--all-groups` to include dev dependencies (pytest, etc.). |
-| 2 | `cp .env.example .env` | Configure API keys (Kalshi/Metaculus). Skip if `.env.example` doesn't exist. |
+| 2 | `cp .env.example .env` | **Initial setup only**: Configure API keys (Kalshi/Metaculus). Skip if you already have a `.env` file or if `.env.example` is missing. |
 | 3 | `uv run scripts/build_db.py --start 2023-01-01 --end 2025-12-31` | Fetch data from Kalshi's public S3 bucket and build dataset. |
 | 4 | `uv run runner/runner.py --method mlp_nn` | Run a benchmarking experiment. |
 | 5 | `uv run scripts/inspect_parquet.py` | View summary statistics of the latest dataset. |
+| 6 | `uv run python tests/parquet_quality.py --parquet data/datasets/<folder>/data.parquet` | Run comprehensive data quality audit (validates 15 requirements, ~2-3 min). |
 
 **Troubleshooting `uv sync`**:
 - If `uv: command not found`: Install `uv` using the commands above
 - If sync fails: Try `uv sync --all-groups` (includes dev dependencies)
 - Alternative: `uv pip install -e .` (if `uv sync` doesn't work)
 - Ensure `uv.lock` file exists and is up to date
+
+**Kalshi API enrichment tuning**:
+- Use `--kalshi-batch-size` with `scripts/build_db.py` to control the /markets batch size.
+- Example: `uv run scripts/build_db.py --start 2024-12-30 --end 2024-12-31 --kalshi-batch-size 70`
+
+**Environment Variables (`.env`)**:
+- `KALSHI_API_KEY_ID`: Your Kalshi API key UUID.
+- `KALSHI_PRIVATE_KEY_PATH`: Path to your `.pem` private key file (e.g., `kalshi_key.pem`).
+- `METACULUS_TOKEN_1`, `METACULUS_TOKEN_2`, ...: One or more Metaculus API tokens for rotation.
+- `METACULUS_TOKEN`: (Legacy/Single) Fallback Metaculus token.
+- `GEMINI_API_KEY`: Google Gemini API key (required for RLM method).
 
 --------------------------------------------------------------------------------
 2. DATA SCHEMA
@@ -42,65 +54,85 @@ Prerequisites: Python 3.13+, `uv` (package manager).
 The pipeline normalizes data into two primary structures, stored in a unified 
 Parquet format.
 
-A. MarketRecord (The "Static" Info)
-Defined in `src/common/schema.py`.
-
-*Optimization Note*: The pipeline uses Kalshi's **public S3 bucket** (`kalshi-public-docs.s3.amazonaws.com/reporting`) 
-to download bulk historical market data files. This is Kalshi's publicly available data repository - no credentials needed. 
-Metadata is then enriched in batches of 100 via the `/markets?tickers=...` 
-API endpoint after discovering unique tickers from the S3 bulk files. This provides a ~100x speedup over one-by-one enrichment.
+A. EventRecord (The "Static" Info)
+Defined in `pipeline/common/schema.py`.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | source| str | "kalshi" or "metaculus" |
-|market_id| str| Unique ID within the source. |
-| title  | str | Question/Market name. |
-| description | str | Full context of the question. |
+|event_id| str| Unique event ID within the source. |
+| title  | str | Event name. |
+| description | str | Full context of the event. |
 | url | str | Link to the original platform. |
-| market_type | Enum | binary, multiple_choice, numeric, or other. |
-| answer_options_json| str (JSON) | List of possible answers/choices. |
-| end_time | datetime | When the market closes. |
+| market_type | Enum | event. |
+| options_json| str (JSON) | List of option objects (one per market/answer). |
+| end_time | datetime | When the event closes (max over options). |
 | status | Enum | open, closed, resolved, or unknown. |
-| resolved_value_json| str (JSON) | The outcome (e.g., "1.0", "yes", or list). |
-| metadata_json | str (JSON) | Source-specific raw metadata. |
+| resolved_value_json| str (JSON) | Resolved option_id if uniquely resolved. |
+| metadata_json | str (JSON) | Event-level metadata (derived). |
 
-B. TimeSeriesPoint (The "Belief" History)
-Stored in the same Parquet table as nested/exploded rows for history.
+B. Option TimeSeries (The "Belief" History)
+Stored inside `options_json` as per-option lists.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| ts | datetime | Timestamp of the prediction/trade. |
-| belief_scalar | float | The normalized probability or price (0-1). |
-| belief_json | str (JSON) | Non-scalar beliefs (e.g., distributions). |
+| ts | datetime (ISO string) | Timestamp of the prediction/trade. |
+| belief | float | The normalized probability or price (0-1). |
 | volume | float | Trading volume (Kalshi-specific). |
 | open_interest | float | Active contracts (Kalshi-specific). |
-| bid / ask | float | Best buy/sell prices (Kalshi-specific). |
+| bid / ask | float | Best buy/sell prices (Kalshi-specific). Optional, ~81% coverage. |
+
+**Note on bid/ask**: Sourced from `/markets/candlesticks` (daily OHLC). Null for: 
+synthetic options (no orderbook), zero-volume markets, ultra-short-lived daily markets.
 
 --------------------------------------------------------------------------------
 3. CORE CLASSES & MODULES
 --------------------------------------------------------------------------------
 
-A. Data Handling (`dataobject/`)
-- `MarketDataset`: Entry point for loading `.parquet` data.
-- `MarketRecordWrapper`: Helper to access row data with validation.
-- `SplitManager`: Handles reproducible Train/Test/Bench splits via hashing.
+A. Data Handling (`forecasting/`)
+- `EventDataset`: Entry point for loading `.parquet` data.
+- `EventRecordWrapper`: Helper to access row data with validation.
+- `SplitManager`: Handles reproducible Train/Test/Bench splits via hashing on `event_id`.
 
-B. Task Definitions (`dataobject/tasks/`)
+B. Task Definitions (`forecasting/tasks/`)
 - `Task`: Abstract base class for defining prediction problems.
-- `ResolveBinary`: Standard binary classification task (predict the final result).
-- `Example`: A single data point (features + history + target).
+- `ResolveEvent`: Multiclass resolution task over event options.
+- `PredictWeekOut`: Predict belief 7 days before market close.
+- `Predict90Percent`: Predict belief at 90% through market duration (dynamic cutoff).
+  - Params: `relax_status` (allow unresolved markets), `min_history_points` (minimum data points)
+- `Example`: A single data point (features + option histories + target distribution).
 - `Batch`: A collection of `Example` objects.
+- `registry.py`: Central factory for instantiating tasks.
 
-C. Forecasting Methods (`methods/`)
+C. Data Pipeline (`pipeline/`)
+- `orchestrator.py`: Main dataset building logic.
+- `common/`: Shared utilities (schema, config, http, parquet).
+- `kalshi/`: Kalshi-specific API grabbers and mapping.
+- `metaculus/`: Metaculus-specific API grabbers and mapping.
+
+D. Forecasting Methods (`methods/`)
 - `ForecastMethod`: Base class for all models/baselines. Supports `.fit()`, `.predict()`, `.save()`, `.load()`.
 - `LastPriceBaseline`: Simple baseline that predicts the most recent belief.
 - `MLPForecaster`: A simple Neural Network (MLP) trained on price history.
+- `RLMForecaster`: Recursive Language Model using Gemini API with TF-IDF semantic search.
+  - Requires `GEMINI_API_KEY` in `.env`
+  - Params: `model` (default "gemini-2.0-flash"), `max_recursions` (default 3), `call_budget` (default 100)
+  - Tools: SEARCH (TF-IDF over market titles), TREND (time series analysis), BASE_RATE (historical resolution rates)
+- `FullRecursiveForecaster`: Advanced ensemble combining web-grounded agents with RLM REPL data analysis.
+  - Requires `GEMINI_API_KEY` in `.env`
+  - Params: `model` (default "gemini-2.0-flash"), `max_iterations` (default 5), `confidence_threshold` (default 0.7), `data_analyst_parallel` (default true)
+  - Architecture: PLANNER -> ANALYST + ADVOCATE_YES + ADVOCATE_NO + DATA_ANALYST -> VERIFIER -> SYNTHESIZER
+  - The pipeline runs recursively until confidence >= threshold or max_iterations reached
+  - DATA_ANALYST uses RLM REPL for quantitative analysis on price history data
+  - Ablation flag `data_analyst_parallel`: true = faster (parallel with web agents), false = sequential (can use web findings)
+  - Usage: `uv run runner/runner.py --method full_recursive`
+  - With ablation: `uv run runner/runner.py --method full_recursive --method-params '{"data_analyst_parallel": false}'`
 - `registry.py`: Central factory for instantiating methods.
 
-D. Experiment Workflow (`runner/`)
+E. Experiment Workflow (`runner/`)
 - `RunSpec`: Serializable configuration for an experiment run.
 - `runner.py`: The primary CLI for orchestrating data loading, training, and evaluation.
-- `evaluator.py`: Computes metrics (Brier, LogLoss, etc.) per task.
+- `evaluator.py`: Computes metrics (multiclass Brier, LogLoss, etc.) per task.
 
 --------------------------------------------------------------------------------
 4. HOW TO BUILD OFF THIS REPO (Best Practices)
@@ -111,28 +143,20 @@ A. Adding a New Forecasting Method
 2. **Subclass**: Inherit from `ForecastMethod`.
 3. **Implement**:
    - `.fit(train_batches, spec)`: Logic to train your model.
-   - `.predict(batch, spec)`: Return a list of predictions (0-1).
+   - `.predict(batch, spec)`: Return a list of per-option probability distributions.
    - `.save(path)` / `.load(path)`: (Optional) Handle persistence.
 4. **Register**: Add your class to `METHODS` in `methods/registry.py`.
 
 B. Adding a New Task
-1. **Create**: New file in `dataobject/tasks/` (e.g., `dataobject/tasks/my_task.py`).
+1. **Create**: New file in `forecasting/tasks/` (e.g., `forecasting/tasks/my_task.py`).
 2. **Subclass**: Inherit from `Task`.
 3. **Implement**:
-   - `.make_examples(record, rng)`: Define how to turn a `MarketRecord` into `Example` objects.
+   - `.make_examples(record, rng)`: Define how to turn an `EventRecord` into `Example` objects.
    - `.metric_fns()`: Return a dict of `{name: sklearn_metric_fn}`.
-4. **Register**: Add it to `TASK_REGISTRY` in `runner/runner.py`.
+4. **Register**: Add your class to `TASKS` in `forecasting/tasks/registry.py`.
 
 C. Experiment Artifacts
-All outputs are stored in `data/outputs/` (ignored by git), organized by model configuration and run:
-`data/outputs/<model>_<hash>/run_<timestamp>_<name>/`
-
-Sub-directories within each run:
-- `model/`: Serialized model weights (`.joblib`, `.pt`).
-- `logs/`: Execution logs and `run.log`.
-- `plots/`: Visualizations and performance graphs.
-- `metrics/`: Structured JSON metrics (`metrics.json`) and run spec (`spec.json`).
-- `*.txt`: A run-info file with description and metadata.
+All outputs are stored in `data/outputs/` (ignored by git). See `runner/results_db.py` for detailed output structure and indexing logic.
 
 --------------------------------------------------------------------------------
 5. REPOSITORY STRUCTURE
@@ -141,14 +165,20 @@ Sub-directories within each run:
 /
 ├── data/               # Local data storage (raw, clean parquets, outputs)
 │   └── outputs/        # Organized experiment artifacts (models, logs, plots, metrics)
-├── dataobject/         # Data models, tasks, and IO hygiene
-├── docs/               # Platform-specific documentation/metadata
+├── external/           # Git submodules
+│   └── rlm/            # RLM library (https://github.com/alexzhang13/rlm)
+├── forecasting/        # Forecasting core: datasets, tasks, splits, metrics
+│   └── tasks/          # Task definitions and registry
+├── pipeline/           # Data pipeline for ingestion
+│   ├── common/         # Shared utils (schema, config, http, parquet)
+│   ├── kalshi/         # Kalshi-specific API grabbers and mapping
+│   └── metaculus/      # Metaculus-specific API grabbers and mapping
 ├── methods/            # Implementations of forecasting algorithms
+│   ├── rlm_tools/      # RLM helper tools (TF-IDF search, trend analysis)
+│   └── full_recursive/ # Full recursive ensemble agents (ported from kalshi-research-agents)
 ├── runner/             # Experiment orchestration and evaluation
 ├── scripts/            # Data ingestion and inspection tools
-├── src/                # Core logic (normalization, API grabbers)
-│   ├── common/         # Shared utils (schema, config, http)
-│   ├── kalshi/         # Kalshi-specific mapping
-│   └── metaculus/      # Metaculus-specific mapping
+├── docs/               # Platform-specific documentation/metadata
+├── tests/              # Test suite
 ├── pyproject.toml      # Project dependencies and metadata
 └── README.md           # High-level overview

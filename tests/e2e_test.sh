@@ -146,6 +146,11 @@ run_command \
     "uv run scripts/inspect_parquet.py" \
     "Inspecting dataset statistics"
 
+# Parquet quality audit
+run_command \
+    "uv run python tests/parquet_quality.py --output $OUTPUT_DIR/parquet_quality" \
+    "Running parquet quality audit"
+
 echo ""
 
 # ============================================================================

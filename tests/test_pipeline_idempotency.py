@@ -14,7 +14,7 @@ from test_utils import compare_parquet_datasets
 @pytest.mark.slow
 def test_parquet_export_determinism(tmp_path):
     """Test that Parquet export is deterministic."""
-    from src.build_unified_parquet import CanonicalStore
+    from pipeline.orchestrator import CanonicalStore
     
     # Create a test database with sample data
     db_path = tmp_path / "test.db"
@@ -78,7 +78,7 @@ def test_parquet_export_determinism(tmp_path):
 
 def test_checkpoint_prevents_reprocessing(tmp_path):
     """Test that checkpoints prevent duplicate processing."""
-    from src.build_unified_parquet import CanonicalStore
+    from pipeline.orchestrator import CanonicalStore
     from datetime import date
     
     db_path = tmp_path / "test.db"

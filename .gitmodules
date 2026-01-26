@@ -1,0 +1,6 @@
+[submodule "external/rlm"]
+	path = external/rlm
+	url = https://github.com/PRAGA-maker/rlm.git
+[submodule "external/neurallambda"]
+	path = external/neurallambda
+	url = https://github.com/neurallambda/neurallambda
